@@ -6,3 +6,4 @@ never rewritten once accepted — superseded decisions get a new record that lin
 | # | Decision | Status |
 |---|----------|--------|
 | [0001](0001-record-architecture-decisions.md) | Record architecture decisions | Accepted |
+| [0002](0002-multi-asset-with-eurc-as-a-first-class-citizen.md) | Multi-asset settlement, with EURC as a first-class citizen | Accepted |
