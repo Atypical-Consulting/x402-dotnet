@@ -30,8 +30,9 @@ public readonly record struct Price
     /// Builds a price from an amount in the asset's display units — euros for EURC, dollars for USDC.
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException">
-    /// The amount is negative, or needs more decimals than the asset has. Rounding here would bill
-    /// an amount nobody wrote, so it is refused instead.
+    /// The amount is negative, exceeds the maximum representable value for the asset's decimals,
+    /// or needs more decimals than the asset has. Rounding here would bill an amount nobody wrote,
+    /// so it is refused instead.
     /// </exception>
     public static Price For(AssetDescriptor asset, decimal displayAmount)
     {
@@ -44,6 +45,16 @@ public readonly record struct Price
         }
 
         var scale = (decimal)BigInteger.Pow(10, asset.Decimals);
+
+        // Check for overflow before multiplying.
+        if (displayAmount > decimal.MaxValue / scale)
+        {
+            var maxAmount = decimal.MaxValue / scale;
+            throw new ArgumentOutOfRangeException(nameof(displayAmount), displayAmount,
+                $"{asset.Symbol} has {asset.Decimals} decimals. The maximum representable amount " +
+                $"is {maxAmount}. {displayAmount} is too large.");
+        }
+
         var scaled = displayAmount * scale;
 
         if (scaled != decimal.Truncate(scaled))

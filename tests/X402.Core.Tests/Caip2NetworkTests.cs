@@ -24,6 +24,7 @@ public sealed class Caip2NetworkTests
     [InlineData(":8453")]
     [InlineData("eip155:8453:extra")]
     [InlineData("base-sepolia")]   // identifiant v1, explicitement non supporté
+    [InlineData("eip155:-8453")]   // negative chain id, rejected
     public void TryParse_rejects_malformed_identifiers(string value)
     {
         Caip2Network.TryParse(value, out _).ShouldBeFalse();
@@ -49,5 +50,15 @@ public sealed class Caip2NetworkTests
 
         solana.IsEvm.ShouldBeFalse();
         Should.Throw<InvalidOperationException>(() => solana.ChainId);
+    }
+
+    [Fact]
+    public void ChainId_throws_for_an_evm_network_with_invalid_reference()
+    {
+        // Direct construction bypasses TryParse validation.
+        var invalid = new Caip2Network("eip155", "banana");
+
+        invalid.IsEvm.ShouldBeTrue();
+        Should.Throw<InvalidOperationException>(() => invalid.ChainId);
     }
 }

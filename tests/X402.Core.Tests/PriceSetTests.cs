@@ -52,4 +52,15 @@ public sealed class PriceSetTests
             Price.For(KnownAssets.UsdcBaseMainnet, 0.011m),
         ]));
     }
+
+    [Fact]
+    public void Default_constructed_price_set_is_empty_and_indexing_it_throws()
+    {
+        var empty = default(PriceSet);
+
+        empty.Count.ShouldBe(0);
+        empty.ShouldBeEmpty();
+
+        Should.Throw<IndexOutOfRangeException>(() => empty[0]);
+    }
 }

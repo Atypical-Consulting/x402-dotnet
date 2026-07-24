@@ -56,7 +56,19 @@ public readonly record struct PriceSet : IReadOnlyList<Price>
     public int Count => prices?.Length ?? 0;
 
     /// <summary>The price at the given position, in the server's order of preference.</summary>
-    public Price this[int index] => prices[index];
+    /// <exception cref="IndexOutOfRangeException">The index is out of range.</exception>
+    public Price this[int index]
+    {
+        get
+        {
+            if (prices == null || index < 0 || index >= prices.Length)
+            {
+                throw new IndexOutOfRangeException();
+            }
+
+            return prices[index];
+        }
+    }
 
     /// <summary>Wraps a single price.</summary>
     public static implicit operator PriceSet(Price price) => new([price]);

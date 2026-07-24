@@ -40,6 +40,27 @@ public sealed class PriceTests
     }
 
     [Fact]
+    public void For_refuses_amounts_that_overflow_decimal_multiplication()
+    {
+        // Most real ERC-20s use 18 decimals. At 18 decimals, overflow occurs around 79.2 billion.
+        var highDecimalAsset = new X402.Assets.AssetDescriptor
+        {
+            Network = X402.Networks.KnownNetworks.BaseSepolia,
+            Address = "0x0000000000000000000000000000000000000001",
+            Symbol = "TEST",
+            Decimals = 18,
+            Eip712Name = "Test",
+            Eip712Version = "1",
+        };
+
+        var exception = Should.Throw<ArgumentOutOfRangeException>(
+            () => Price.For(highDecimalAsset, 100_000_000_000m));
+
+        exception.Message.ShouldContain("TEST");
+        exception.Message.ShouldContain("18");
+    }
+
+    [Fact]
     public void Atomic_takes_the_amount_verbatim()
     {
         var price = Price.Atomic(KnownAssets.UsdcBaseMainnet, "123456789");

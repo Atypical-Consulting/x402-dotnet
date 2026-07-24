@@ -17,11 +17,28 @@ public readonly record struct Caip2Network(string Namespace, string Reference)
     public bool IsEvm => Namespace == EvmNamespace;
 
     /// <summary>The EVM chain identifier.</summary>
-    /// <exception cref="InvalidOperationException">The network is not an EVM chain.</exception>
-    public long ChainId => IsEvm
-        ? long.Parse(Reference, CultureInfo.InvariantCulture)
-        : throw new InvalidOperationException(
-            $"'{this}' is not an EVM network, so it has no chain id.");
+    /// <exception cref="InvalidOperationException">The network is not an EVM chain, or the reference is not a valid chain id.</exception>
+    public long ChainId
+    {
+        get
+        {
+            if (!IsEvm)
+            {
+                throw new InvalidOperationException(
+                    $"'{this}' is not an EVM network, so it has no chain id.");
+            }
+
+            try
+            {
+                return long.Parse(Reference, CultureInfo.InvariantCulture);
+            }
+            catch (FormatException)
+            {
+                throw new InvalidOperationException(
+                    $"'{this}' has an invalid EVM chain id reference: '{Reference}' is not a valid long value.");
+            }
+        }
+    }
 
     /// <summary>Parses a CAIP-2 identifier.</summary>
     /// <exception cref="FormatException">The value is not a well-formed CAIP-2 identifier.</exception>
@@ -75,10 +92,18 @@ public readonly record struct Caip2Network(string Namespace, string Reference)
             return false;
         }
 
-        // An EVM reference must be a chain id.
-        if (ns == EvmNamespace && !long.TryParse(reference, CultureInfo.InvariantCulture, out _))
+        // An EVM reference must be a non-negative chain id (all ASCII digits).
+        if (ns == EvmNamespace)
         {
-            return false;
+            if (!reference.All(char.IsAsciiDigit))
+            {
+                return false;
+            }
+
+            if (!long.TryParse(reference, CultureInfo.InvariantCulture, out _))
+            {
+                return false;
+            }
         }
 
         network = new Caip2Network(ns, reference);
