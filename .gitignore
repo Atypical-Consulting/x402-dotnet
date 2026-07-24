@@ -12,3 +12,6 @@ obj/
 # Local config
 appsettings.Local.json
 *.user
+
+# SDD workspace (scratch, not part of the deliverable)
+.superpowers/
