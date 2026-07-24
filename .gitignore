@@ -1,0 +1,14 @@
+# Build results
+bin/
+obj/
+
+# IDE
+.vs/
+.idea/
+
+# macOS
+.DS_Store
+
+# Local config
+appsettings.Local.json
+*.user
