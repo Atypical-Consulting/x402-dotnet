@@ -53,16 +53,19 @@ internal sealed class HttpFacilitatorClient(IHttpClientFactory httpClientFactory
             SettleClientName, "settle", SettleMaxRetryAttempts, ShouldRetrySettle,
             payload, requirements, cancellationToken);
 
+    // Single bounded attempt, no retry: nothing in src/ calls this yet, so there is no case in
+    // hand to size a retry policy against, and shipping one untested would be machinery nobody
+    // asked for. Whoever adds the first real caller should choose (and test) its own resilience.
     public async Task<SupportedResponse> GetSupportedAsync(CancellationToken cancellationToken)
     {
         var httpClient = httpClientFactory.CreateClient(VerifyClientName);
-        var pipeline = BuildPipeline(VerifyMaxRetryAttempts, ShouldRetryVerify, MaxAttemptTimeout);
 
         try
         {
-            var response = await pipeline.ExecuteAsync(
-                token => new ValueTask<HttpResponseMessage>(httpClient.GetAsync("supported", token)),
-                cancellationToken);
+            using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutSource.CancelAfter(MaxAttemptTimeout);
+
+            var response = await httpClient.GetAsync("supported", timeoutSource.Token);
             response.EnsureSuccessStatusCode();
 
             return await response.Content.ReadFromJsonAsync<SupportedResponse>(
@@ -143,6 +146,23 @@ internal sealed class HttpFacilitatorClient(IHttpClientFactory httpClientFactory
     /// the inner strategy: each retry attempt re-enters it and gets a fresh deadline, instead of the
     /// whole retried operation sharing a single budget.
     /// </summary>
+    /// <remarks>
+    /// This pipeline is built fresh on every call — deliberately, because the attempt timeout is
+    /// derived from <see cref="PaymentRequirements.MaxTimeoutSeconds"/>, which is only known per
+    /// call, not at DI-registration time. Retry and timeout hold no cross-call state, so rebuilding
+    /// them per call costs nothing today.
+    /// <para>
+    /// That stops being true for any STATEFUL strategy. Adding <c>.AddCircuitBreaker(...)</c>,
+    /// a rate limiter or a hedging strategy here will compile and pass every existing test, but
+    /// each one will start from an empty history on every single call, so a circuit breaker built
+    /// this way can never accumulate enough failures to open — it silently never trips, which is
+    /// worse than not having one, because everyone assumes it is there. If a later task needs a
+    /// stateful strategy, it belongs on a single pipeline registered once per named client via
+    /// <c>AddResilienceHandler</c>, with the per-call attempt timeout carried through
+    /// <c>HttpRequestMessage.Options</c> (or a <c>ResilienceContext</c> property) and read back by
+    /// a <c>TimeoutGenerator</c> — not bolted onto this per-call builder.
+    /// </para>
+    /// </remarks>
     private static ResiliencePipeline<HttpResponseMessage> BuildPipeline(
         int maxRetryAttempts,
         Func<RetryPredicateArguments<HttpResponseMessage>, ValueTask<bool>> shouldHandle,
