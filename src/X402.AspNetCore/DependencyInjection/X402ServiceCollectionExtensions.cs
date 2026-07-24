@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using X402.AspNetCore.Configuration;
+using X402.AspNetCore.Facilitator;
 using X402.Billing;
 using X402.Licensing;
 
@@ -60,6 +61,29 @@ public static class X402ServiceCollectionExtensions
         services.TryAddSingleton<IFeatureGate, AllowAllFeatureGate>();
         services.TryAddSingleton<IPaymentEventSink, LoggerPaymentEventSink>();
 
+        AddFacilitatorClients(services);
+
         return new X402Builder(services);
+    }
+
+    // Two named HttpClients, not one shared policy that inspects the request URI: verify and
+    // settle are retried under different rules (see HttpFacilitatorClient), and HttpFacilitatorClient
+    // itself builds the resilience pipeline per call, sized to the payment's own MaxTimeoutSeconds.
+    // These registrations only need to give each named client its transport: a base address that
+    // survives a facilitator URL with a path segment (see EnsureTrailingSlash), and an infinite
+    // HttpClient.Timeout so HttpFacilitatorClient's own per-attempt timeout is what actually governs.
+    private static void AddFacilitatorClients(IServiceCollection services)
+    {
+        void ConfigureClient(HttpClient client, IServiceProvider provider)
+        {
+            var options = provider.GetRequiredService<IOptions<X402Options>>().Value;
+            client.BaseAddress = HttpFacilitatorClient.EnsureTrailingSlash(options.FacilitatorUrl!);
+            client.Timeout = Timeout.InfiniteTimeSpan;
+        }
+
+        services.AddHttpClient("x402-verify", (provider, client) => ConfigureClient(client, provider));
+        services.AddHttpClient("x402-settle", (provider, client) => ConfigureClient(client, provider));
+
+        services.TryAddSingleton<IFacilitatorClient, HttpFacilitatorClient>();
     }
 }

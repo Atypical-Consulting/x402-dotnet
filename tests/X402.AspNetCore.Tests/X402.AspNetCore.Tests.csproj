@@ -30,6 +30,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\X402.AspNetCore\X402.AspNetCore.csproj" />
+    <!-- FacilitatorClientTests drives HttpFacilitatorClient against the fake facilitator. -->
+    <ProjectReference Include="..\X402.TestKit\X402.TestKit.csproj" />
   </ItemGroup>
 
 </Project>

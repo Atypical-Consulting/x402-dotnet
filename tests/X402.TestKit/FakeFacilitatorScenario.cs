@@ -20,4 +20,7 @@ public enum FakeFacilitatorScenario
 
     /// <summary>Verify successfully but fail settlement.</summary>
     SettleFailure,
+
+    /// <summary>Answer with a bare 500, as if the facilitator suffered an internal failure.</summary>
+    ServerError,
 }

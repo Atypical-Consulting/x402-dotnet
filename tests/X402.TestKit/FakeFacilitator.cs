@@ -22,6 +22,12 @@ public sealed class FakeFacilitator : IAsyncDisposable
 {
     private readonly IHost host;
     private readonly ConcurrentBag<string> settledNonces = [];
+    private readonly object scenarioGate = new();
+    private int verifyCallCount;
+    private int settleCallCount;
+    private int pendingFailureCalls;
+    private FakeFacilitatorScenario pendingFailureScenario;
+    private volatile string? lastRequestBody;
 
     /// <summary>Starts the facilitator on an in-memory transport.</summary>
     public FakeFacilitator()
@@ -63,8 +69,42 @@ public sealed class FakeFacilitator : IAsyncDisposable
     public bool HasDoubleSettled =>
         settledNonces.GroupBy(n => n, StringComparer.OrdinalIgnoreCase).Any(g => g.Count() > 1);
 
+    /// <summary>How many times <c>/verify</c> has been called.</summary>
+    public int VerifyCallCount => verifyCallCount;
+
+    /// <summary>How many times <c>/settle</c> has been called.</summary>
+    public int SettleCallCount => settleCallCount;
+
+    /// <summary>
+    /// The raw JSON body of the most recent request that reached <c>/verify</c> or <c>/settle</c>,
+    /// so a test can assert the wire shape rather than only the deserialized result. Unset by a
+    /// forced-scenario call that returns before the body is read (<c>NetworkFailure</c>,
+    /// <c>ServerError</c>, <c>Timeout</c>).
+    /// </summary>
+    public string? LastRequestBody => lastRequestBody;
+
     /// <summary>An <see cref="HttpClient"/> bound to this facilitator.</summary>
     public HttpClient CreateClient() => host.GetTestClient();
+
+    /// <summary>
+    /// The <see cref="Microsoft.AspNetCore.TestHost.TestServer"/>'s message handler, for use as an
+    /// <see cref="HttpClient"/>'s primary handler — the way a real <c>IHttpClientFactory</c>-built
+    /// client would be wired against this facilitator in a test.
+    /// </summary>
+    public HttpMessageHandler CreateHandler() => host.GetTestServer().CreateHandler();
+
+    /// <summary>
+    /// Makes the next <paramref name="count"/> calls to <c>/verify</c> or <c>/settle</c> — combined,
+    /// not per endpoint — behave as <paramref name="scenario"/>, then reverts to <see cref="Scenario"/>.
+    /// </summary>
+    public void FailNextCalls(int count, FakeFacilitatorScenario scenario)
+    {
+        lock (scenarioGate)
+        {
+            pendingFailureCalls = count;
+            pendingFailureScenario = scenario;
+        }
+    }
 
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
@@ -89,19 +129,27 @@ public sealed class FakeFacilitator : IAsyncDisposable
 
     private async Task<IResult> HandleVerifyAsync(HttpContext context)
     {
-        if (Scenario == FakeFacilitatorScenario.NetworkFailure)
+        Interlocked.Increment(ref verifyCallCount);
+        var scenario = ConsumeScenario();
+
+        if (scenario == FakeFacilitatorScenario.NetworkFailure)
         {
             context.Abort();
             return Results.Empty;
         }
 
-        if (Scenario == FakeFacilitatorScenario.Timeout)
+        if (scenario == FakeFacilitatorScenario.ServerError)
+        {
+            return Results.StatusCode(500);
+        }
+
+        if (scenario == FakeFacilitatorScenario.Timeout)
         {
             await Task.Delay(TimeoutDelay, context.RequestAborted);
         }
 
         var request = await ReadRequestAsync(context);
-        var reason = Validate(request);
+        var reason = Validate(request, scenario);
 
         return Results.Json(
             reason is null
@@ -112,13 +160,21 @@ public sealed class FakeFacilitator : IAsyncDisposable
 
     private async Task<IResult> HandleSettleAsync(HttpContext context)
     {
-        if (Scenario == FakeFacilitatorScenario.NetworkFailure)
+        Interlocked.Increment(ref settleCallCount);
+        var scenario = ConsumeScenario();
+
+        if (scenario == FakeFacilitatorScenario.NetworkFailure)
         {
             context.Abort();
             return Results.Empty;
         }
 
-        if (Scenario == FakeFacilitatorScenario.Timeout)
+        if (scenario == FakeFacilitatorScenario.ServerError)
+        {
+            return Results.StatusCode(500);
+        }
+
+        if (scenario == FakeFacilitatorScenario.Timeout)
         {
             await Task.Delay(TimeoutDelay, context.RequestAborted);
         }
@@ -127,8 +183,8 @@ public sealed class FakeFacilitator : IAsyncDisposable
         var authorization = request.PaymentPayload.AsExactEvm().Authorization;
         settledNonces.Add(authorization.Nonce);
 
-        var reason = Validate(request);
-        if (reason is not null || Scenario == FakeFacilitatorScenario.SettleFailure)
+        var reason = Validate(request, scenario);
+        if (reason is not null || scenario == FakeFacilitatorScenario.SettleFailure)
         {
             return Results.Json(new SettleResponse
             {
@@ -153,9 +209,33 @@ public sealed class FakeFacilitator : IAsyncDisposable
         }, X402Json.Options);
     }
 
-    private static async Task<FacilitatorRequest> ReadRequestAsync(HttpContext context) =>
-        await context.Request.ReadFromJsonAsync<FacilitatorRequest>(X402Json.Options)
-        ?? throw new InvalidOperationException("The facilitator received an empty request body.");
+    /// <summary>Reads and records the raw body, then decodes it: <see cref="LastRequestBody"/> must
+    /// reflect exactly what was on the wire, not a round trip through the decoded object.</summary>
+    private async Task<FacilitatorRequest> ReadRequestAsync(HttpContext context)
+    {
+        using var reader = new StreamReader(context.Request.Body);
+        var body = await reader.ReadToEndAsync();
+        lastRequestBody = body;
+
+        return System.Text.Json.JsonSerializer.Deserialize<FacilitatorRequest>(body, X402Json.Options)
+            ?? throw new InvalidOperationException("The facilitator received an empty request body.");
+    }
+
+    /// <summary>Consumes one pending forced-scenario call if <see cref="FailNextCalls"/> armed one,
+    /// otherwise falls back to <see cref="Scenario"/>.</summary>
+    private FakeFacilitatorScenario ConsumeScenario()
+    {
+        lock (scenarioGate)
+        {
+            if (pendingFailureCalls > 0)
+            {
+                pendingFailureCalls--;
+                return pendingFailureScenario;
+            }
+        }
+
+        return Scenario;
+    }
 
     private static string? PayerOf(FacilitatorRequest request)
     {
@@ -163,16 +243,21 @@ public sealed class FakeFacilitator : IAsyncDisposable
         catch (System.Text.Json.JsonException) { return null; }
     }
 
-    private string? Validate(FacilitatorRequest request)
+    private string? Validate(FacilitatorRequest request, FakeFacilitatorScenario scenario)
     {
-        if (Scenario == FakeFacilitatorScenario.InsufficientFunds)
+        // These forced-scenario overrides run before signature verification, which inverts the
+        // order of the scheme document's phase 2 (signature, then validity window, then amount,
+        // then recipient). That is fine — InsufficientFunds/UnsupportedAsset are harness overrides
+        // for tests, not specification steps — but it means a test combining a forced scenario with
+        // a tampered signature gets the forced error code back, not InvalidExactEvmPayloadSignature.
+        if (scenario == FakeFacilitatorScenario.InsufficientFunds)
         {
             return X402ErrorReason.InsufficientFunds;
         }
 
         var requirements = request.PaymentRequirements;
 
-        if (Scenario == FakeFacilitatorScenario.UnsupportedAsset
+        if (scenario == FakeFacilitatorScenario.UnsupportedAsset
             && !SupportedAssets.Contains(requirements.Asset, StringComparer.OrdinalIgnoreCase))
         {
             return X402ErrorReason.InvalidPaymentRequirements;
