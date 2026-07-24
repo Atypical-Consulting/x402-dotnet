@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>X402.AspNetCore</PackageId>
+    <RootNamespace>X402.AspNetCore</RootNamespace>
+    <Description>ASP.NET Core configuration and service registration for accepting x402 v2 payments: strongly-typed options, asset resolution, and start-up validation that fails the host before the first payment.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Not used until task 8's facilitator client, but pinned and referenced here so the project
+         shape does not change when that client is added. -->
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\X402.Core\X402.Core.csproj" />
+  </ItemGroup>
+
+</Project>
