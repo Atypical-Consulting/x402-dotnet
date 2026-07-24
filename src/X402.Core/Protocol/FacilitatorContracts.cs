@@ -26,7 +26,7 @@ public sealed record VerifyResponse
     [JsonPropertyName("isValid")]
     public required bool IsValid { get; init; }
 
-    /// <summary>Why the authorization was rejected. See <c>X402ErrorReason</c>.</summary>
+    /// <summary>Why the authorization was rejected. See <see cref="X402ErrorReason"/>.</summary>
     [JsonPropertyName("invalidReason")]
     public string? InvalidReason { get; init; }
 
@@ -46,7 +46,7 @@ public sealed record SettleResponse
     [JsonPropertyName("success")]
     public required bool Success { get; init; }
 
-    /// <summary>Why settlement failed. See <c>X402ErrorReason</c>.</summary>
+    /// <summary>Why settlement failed. See <see cref="X402ErrorReason"/>.</summary>
     [JsonPropertyName("errorReason")]
     public string? ErrorReason { get; init; }
 
