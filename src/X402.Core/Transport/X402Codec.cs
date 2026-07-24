@@ -13,6 +13,9 @@ public static class X402Codec
     /// <summary>The only protocol version this library speaks.</summary>
     public const int SupportedVersion = 2;
 
+    /// <summary>Maximum allowed header size in bytes. Headers exceeding this are rejected as implausibly large.</summary>
+    private const int MaxHeaderSizeBytes = 10 * 1024 * 1024; // 10 MB
+
     /// <summary>Encodes a protocol object for a transport header.</summary>
     public static string Encode<T>(T value)
     {
@@ -23,6 +26,7 @@ public static class X402Codec
     /// <summary>
     /// Decodes a protocol object from a transport header. Never throws: the input comes from the
     /// network, so every malformed shape is reported through <paramref name="error"/> instead.
+    /// Headers larger than 10 MB are rejected as implausibly large.
     /// </summary>
     /// <param name="header">The raw header value.</param>
     /// <param name="value">The decoded object, or <c>null</c> on failure.</param>
@@ -37,6 +41,12 @@ public static class X402Codec
         if (string.IsNullOrWhiteSpace(header))
         {
             error = "the header is absent or empty";
+            return false;
+        }
+
+        if (header.Length > MaxHeaderSizeBytes)
+        {
+            error = $"the header exceeds the maximum size of {MaxHeaderSizeBytes} bytes";
             return false;
         }
 
@@ -58,6 +68,12 @@ public static class X402Codec
             catch (JsonException exception)
             {
                 error = $"the header does not contain a valid {typeof(T).Name}: {exception.Message}";
+                return false;
+            }
+            catch (NotSupportedException)
+            {
+                error = $"{typeof(T).Name} is not a registered x402 protocol type; " +
+                        $"add [JsonSerializable(typeof({typeof(T).Name}))] to X402JsonContext";
                 return false;
             }
 

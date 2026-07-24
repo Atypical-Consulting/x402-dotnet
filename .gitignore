@@ -13,5 +13,8 @@ obj/
 appsettings.Local.json
 *.user
 
+# Test output
+*.log
+
 # SDD workspace (scratch, not part of the deliverable)
 .superpowers/

@@ -86,4 +86,36 @@ public sealed class X402CodecTests
             .ShouldBe("invalid_exact_evm_payload_signature");
         X402ErrorReason.All.Count.ShouldBe(15);
     }
+
+    [Fact]
+    public void TryDecode_rejects_unregistered_types_without_throwing()
+    {
+        // AssetDescriptor is not registered in X402JsonContext, so deserialization would normally
+        // raise NotSupportedException. TryDecode must catch this and return false with a
+        // developer-actionable error message.
+        var b64 = Convert.ToBase64String(Encoding.UTF8.GetBytes("""{"foo":"bar"}"""));
+
+        X402Codec.TryDecode<X402.Assets.AssetDescriptor>(b64, out var value, out var error)
+            .ShouldBeFalse();
+
+        value.ShouldBeNull();
+        error.ShouldNotBeNullOrWhiteSpace();
+        error.ShouldContain("AssetDescriptor");
+        error.ShouldContain("JsonSerializable");
+    }
+
+    [Fact]
+    public void TryDecode_rejects_implausibly_large_headers()
+    {
+        // A header larger than 10 MB is implausibly large for any x402 protocol object and
+        // suggests a malformed or hostile input. It should be rejected before attempting to decode.
+        var implausiblyLarge = new string('A', 11 * 1024 * 1024); // 11 MB of base64 chars
+
+        X402Codec.TryDecode<PaymentRequired>(implausiblyLarge, out var value, out var error)
+            .ShouldBeFalse();
+
+        value.ShouldBeNull();
+        error.ShouldNotBeNullOrWhiteSpace();
+        error.ShouldContain("exceeds");
+    }
 }
