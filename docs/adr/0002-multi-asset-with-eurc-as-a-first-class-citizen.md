@@ -2,35 +2,41 @@
 
 ## Context and Problem Statement
 
-The x402 v2 protocol must support settlement in multiple stablecoin denominations to accommodate operators and payers in different regions and with different preferences. The European market requires euro-denominated settlement, while other markets may prefer USD-denominated stablecoins. The library must provide a clean, safe API for working with multiple assets while maintaining strong guarantees about precision, network consistency, and EIP-712 signature security.
+The brief specified USDC as the settlement asset. Every reference x402 SDK — TypeScript, Python,
+Go — ships a default-asset map covering twenty chains with one stablecoin each, all
+dollar-denominated; no euro asset appears anywhere. Meanwhile EURC is an EIP-3009 token on both
+Base networks, settleable by the `exact` scheme with no protocol extension whatsoever.
+
+Should this library follow the brief and support a single dollar asset, or accept several?
 
 ## Decision Drivers
 
-* Need to support both EURC (euro-denominated stablecoin) and USDC (dollar-denominated stablecoin) as first-class settlement options
-* EURC should be the default and primary recommendation for operators
-* EIP-712 domain values vary between networks and tokens (USDC has different domain names on Base Sepolia vs Base mainnet) and must be read from on-chain data, not documentation
-* Price precision must be exact — no silent rounding that would bill an amount the operator did not write
-* Assets from different networks cannot be mixed in a single payment demand
-* The library should not provide any currency conversion, exchange rates, or multi-asset arbitrage APIs
+* Euro-denominated billing is the only technically demonstrable gap against the existing SDKs.
+* Moving from a single configured asset to a list is a breaking API change if deferred.
+* Any automatic EUR/USD conversion would make this library a trusted third party on value, and
+  would make the billed amount irreproducible.
 
 ## Considered Options
 
-* Single-asset library with manual per-operator asset configuration
-* Hard-coded multi-asset support with documentation-sourced EIP-712 domain values
-* Flexible multi-asset catalogue with on-chain EIP-712 values and strict validation
-* Allow any combination of assets across networks in a single price set
+* Multi-asset from the start, EURC first-class
+* Multi-asset shape, USDC only enabled
+* USDC only, European positioning carried by documentation alone
 
 ## Decision Outcome
 
-Chosen option: "Flexible multi-asset catalogue with on-chain EIP-712 values and strict validation", because it provides both convenience (KnownAssets catalogue) and safety (validated on-chain values, network consistency, precision guarantees), establishes EURC as the default while fully supporting USDC, and makes the cost of mistakes (wrong EIP-712 domains, silent rounding, network mixing) immediately visible through compile-time and test-time failures.
+Chosen: **multi-asset from the start, EURC first-class**. `X402Options.Assets` is a list, prices
+are declared per asset, and `KnownAssets` ships verified profiles for EURC and USDC on both Base
+networks.
 
-### Consequences
+This deviates from the brief, deliberately and with the sponsor's agreement.
 
-* Good, because operators can easily configure common assets (EURC and USDC on both networks) through the catalogue
-* Good, because the library refuses silent rounding — any precision loss is caught at price construction time
-* Good, because network consistency is enforced — a single PriceSet cannot mix Base Sepolia and Base mainnet assets
-* Good, because EIP-712 domain values are locked in tests, catching any accidental "harmonization" that would break mainnet payments
-* Good, because EURC is listed first in ForNetwork, establishing it as the default recommendation
-* Good, because the public API provides no currency conversion, keeping the library's responsibilities clear
-* Bad, because operators must use Price.Atomic if they need to work with assets not in the catalogue
-* Bad, because EIP-712 domain values must be re-verified on-chain whenever the library updates them, adding operational overhead
+## Consequences
+
+* A resource can be offered in euros and dollars at once; the payer settles in what it holds.
+* No conversion API exists anywhere in the library, and a test enforces that.
+* Spending limits are tracked per asset, never aggregated — a single cap across currencies would
+  imply an exchange rate we do not have.
+* A facilitator advertises scheme × network pairs but never the assets it settles, so no
+  start-up check can confirm EURC support. The `--probe` command answers it empirically instead.
+* MiCA compliance belongs to the asset's issuer — Circle France SAS, ACPR EMI register 17788 —
+  never to this library. Documentation must not blur that line.
