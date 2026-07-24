@@ -1,4 +1,6 @@
 using System.Collections.Concurrent;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using X402.Protocol;
 
 namespace X402.AspNetCore.Idempotency;
@@ -11,19 +13,34 @@ namespace X402.AspNetCore.Idempotency;
 /// authorization is refused on-chain anyway, so keeping the entry would bound nothing and grow
 /// memory without end.
 /// </remarks>
-public sealed class InMemorySettlementLedger : ISettlementLedger
+public sealed partial class InMemorySettlementLedger : ISettlementLedger
 {
     private readonly ConcurrentDictionary<PaymentIdentity, Entry> entries = new();
     private readonly TimeSpan retention;
+    private readonly TimeSpan leaseTimeout;
     private readonly TimeProvider time;
+    private readonly ILogger<InMemorySettlementLedger> logger;
 
-    /// <summary>Creates a ledger retaining entries for the given duration.</summary>
-    /// <param name="retention">How long a settled authorization is remembered. Defaults to 10 minutes.</param>
+    /// <summary>Creates a ledger retaining entries for the given durations.</summary>
+    /// <param name="retention">How long a completed settlement is remembered. Defaults to 10 minutes.</param>
+    /// <param name="leaseTimeout">
+    /// How long an acquired-but-not-yet-completed authorization is held before being treated as
+    /// abandoned and reclaimed — a backstop against a caller that acquires and never completes or
+    /// abandons (typically a crash). Defaults to one hour, deliberately far larger than any plausible
+    /// endpoint-plus-settlement round trip so this should never fire in normal operation.
+    /// </param>
     /// <param name="timeProvider">Clock, for tests.</param>
-    public InMemorySettlementLedger(TimeSpan? retention = null, TimeProvider? timeProvider = null)
+    /// <param name="logger">Where sequencing anomalies are logged. Defaults to a no-op logger.</param>
+    public InMemorySettlementLedger(
+        TimeSpan? retention = null,
+        TimeSpan? leaseTimeout = null,
+        TimeProvider? timeProvider = null,
+        ILogger<InMemorySettlementLedger>? logger = null)
     {
         this.retention = retention ?? TimeSpan.FromMinutes(10);
+        this.leaseTimeout = leaseTimeout ?? TimeSpan.FromHours(1);
         time = timeProvider ?? TimeProvider.System;
+        this.logger = logger ?? NullLogger<InMemorySettlementLedger>.Instance;
     }
 
     /// <inheritdoc />
@@ -33,7 +50,7 @@ public sealed class InMemorySettlementLedger : ISettlementLedger
         var now = time.GetUtcNow();
         Prune(now);
 
-        var fresh = new Entry(now + retention, null);
+        var fresh = new Entry(now + leaseTimeout, null);
         var existing = entries.GetOrAdd(identity, fresh);
 
         if (ReferenceEquals(existing, fresh))
@@ -42,20 +59,18 @@ public sealed class InMemorySettlementLedger : ISettlementLedger
         }
 
         // No separate "expired but not yet pruned" case to handle here: Prune, just above, removes
-        // every entry whose ExpiresAt <= now before GetOrAdd runs, using this same `now`. For
-        // `existing` to reach this point already expired, another caller would have to insert it in
-        // the gap between Prune's scan and this GetOrAdd — a gap with no yield point, so no thread
-        // interleaving lands there in practice. (This stops being true if Prune is ever throttled to
-        // run less than once per acquisition — see the class remarks on that known limitation.)
+        // every entry whose ExpiresAt <= now using this same now. For `existing` to reach this point
+        // already expired, another caller would have to have inserted it after our Prune ran — but
+        // every entry a caller inserts is stamped with its own now plus a strictly positive duration
+        // (lease timeout or retention), and real time only moves forward, so that stamp can never
+        // already be <= a now captured before the insert happened. `existing` is therefore always
+        // either in flight or already settled here, never stale.
         return ValueTask.FromResult(existing.Response is { } response
             ? new SettlementSlot(SettlementSlotState.AlreadySettled, response)
             : new SettlementSlot(SettlementSlotState.InFlight, null));
     }
 
     /// <inheritdoc />
-    /// <exception cref="InvalidOperationException">
-    /// The identity was not acquired first, or was already completed.
-    /// </exception>
     public ValueTask CompleteAsync(
         PaymentIdentity identity, SettleResponse response, CancellationToken cancellationToken = default)
     {
@@ -63,19 +78,50 @@ public sealed class InMemorySettlementLedger : ISettlementLedger
 
         var completed = new Entry(time.GetUtcNow() + retention, response);
 
-        // Only settle an entry that is currently in flight (acquired, not yet completed), and only
-        // the specific entry read a moment ago: this is a caller-sequencing contract, not something
-        // to paper over. Completing without acquiring, or completing twice, is a bug in the caller
-        // and must fail loudly rather than fabricate or silently overwrite a settlement record.
-        if (entries.TryGetValue(identity, out var existing)
-            && existing.Response is null
-            && entries.TryUpdate(identity, completed, existing))
+        while (true)
         {
+            if (!entries.TryGetValue(identity, out var existing))
+            {
+                // Absent: never acquired, or — far more likely in practice — the lease was reclaimed
+                // by Prune's abandoned-lease backstop while this settlement was still in flight (see
+                // AcquireAsync's remarks). Either way the settlement already happened on-chain, and
+                // refusing to record it is what would create a double payment, not recording it too
+                // eagerly. Insert rather than reject; a missing entry here is not proof of a bug.
+                if (entries.TryAdd(identity, completed))
+                {
+                    CompletedWithoutAcquisition(
+                        logger, identity.Network, identity.Asset, identity.Nonce, response.Transaction);
+                    return ValueTask.CompletedTask;
+                }
+
+                continue; // Someone else raced in between; re-read and resolve against the new state.
+            }
+
+            if (existing.Response is null)
+            {
+                // Normal path: still in flight, hand off via compare-and-swap.
+                if (entries.TryUpdate(identity, completed, existing))
+                {
+                    return ValueTask.CompletedTask;
+                }
+
+                continue; // Lost a race (e.g. against Abandon or another Complete); re-read and retry.
+            }
+
+            if (existing.Response.Equals(response))
+            {
+                // Duplicate completion, same outcome (e.g. a retried settle that reached the
+                // facilitator twice): harmless, nothing left to record.
+                return ValueTask.CompletedTask;
+            }
+
+            // Two different outcomes recorded for the same authorization. Keep the first — it is the
+            // one that actually happened on-chain first — and never overwrite it; this is a genuine
+            // anomaly, not something a well-behaved retry can trigger on its own, so it is surfaced.
+            ConflictingCompletion(logger, identity.Network, identity.Asset, identity.Nonce,
+                existing.Response.Transaction, response.Transaction);
             return ValueTask.CompletedTask;
         }
-
-        throw new InvalidOperationException(
-            $"Cannot complete settlement for {identity}: it was not acquired, or is already settled.");
     }
 
     /// <inheritdoc />
@@ -102,6 +148,20 @@ public sealed class InMemorySettlementLedger : ISettlementLedger
             }
         }
     }
+
+    [LoggerMessage(EventId = 4030, Level = LogLevel.Warning,
+        Message = "Settlement completed for {Network}/{Asset}/{Nonce} without a held lease " +
+                  "(transaction {Transaction}) — most likely the lease timeout reclaimed it while " +
+                  "settlement was still in flight.")]
+    private static partial void CompletedWithoutAcquisition(
+        ILogger logger, string network, string asset, string nonce, string transaction);
+
+    [LoggerMessage(EventId = 4031, Level = LogLevel.Warning,
+        Message = "Settlement for {Network}/{Asset}/{Nonce} was already completed with transaction " +
+                  "{ExistingTransaction}; ignoring a conflicting completion carrying transaction " +
+                  "{NewTransaction}.")]
+    private static partial void ConflictingCompletion(ILogger logger, string network, string asset,
+        string nonce, string existingTransaction, string newTransaction);
 
     private sealed record Entry(DateTimeOffset ExpiresAt, SettleResponse? Response);
 }

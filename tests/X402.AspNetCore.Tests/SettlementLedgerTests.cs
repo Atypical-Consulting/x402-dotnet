@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using X402.AspNetCore.Idempotency;
 using X402.Protocol;
 
@@ -145,22 +146,100 @@ public sealed class SettlementLedgerTests
     }
 
     [Fact]
-    public async Task Completing_a_nonce_that_was_never_acquired_throws()
+    public async Task Prune_leaves_an_in_flight_entry_alone_well_past_retention()
     {
-        var ledger = new InMemorySettlementLedger();
+        var time = new ManualTimeProvider(DateTimeOffset.UtcNow);
+        var ledger = new InMemorySettlementLedger(
+            retention: TimeSpan.FromMilliseconds(1), timeProvider: time);
+        await ledger.AcquireAsync(Identity(), TestContext.Current.CancellationToken);
 
-        await Should.ThrowAsync<InvalidOperationException>(async () =>
-            await ledger.CompleteAsync(Identity(), Settled(), TestContext.Current.CancellationToken));
+        // Retention governs settled records, not in-flight leases: an in-flight entry must survive
+        // well past it, protected instead by the much longer (default one hour) lease timeout.
+        time.Advance(TimeSpan.FromMinutes(5));
+
+        var slot = await ledger.AcquireAsync(Identity(), TestContext.Current.CancellationToken);
+        slot.State.ShouldBe(SettlementSlotState.InFlight);
     }
 
     [Fact]
-    public async Task Completing_an_already_settled_nonce_throws()
+    public async Task Completing_after_the_lease_was_pruned_still_persists_the_settlement()
+    {
+        var time = new ManualTimeProvider(DateTimeOffset.UtcNow);
+        var logger = new RecordingLogger();
+        var ledger = new InMemorySettlementLedger(
+            leaseTimeout: TimeSpan.FromMilliseconds(1), timeProvider: time, logger: logger);
+        await ledger.AcquireAsync(Identity(), TestContext.Current.CancellationToken);
+
+        time.Advance(TimeSpan.FromMinutes(5)); // well past the (deliberately shortened) lease timeout
+
+        // Some unrelated request's AcquireAsync runs Prune as a side effect, reclaiming our
+        // now-abandoned-looking lease while we are still mid-settlement — the scenario this fix
+        // round exists to close.
+        var other = new PaymentIdentity("eip155:8453", "0xdead", "0xother");
+        await ledger.AcquireAsync(other, TestContext.Current.CancellationToken);
+
+        // Our own settlement finishes anyway; it must be recorded, not discarded, and the missing
+        // lease must not be treated as a caller bug.
+        await ledger.CompleteAsync(Identity(), Settled(), TestContext.Current.CancellationToken);
+
+        var slot = await ledger.AcquireAsync(Identity(), TestContext.Current.CancellationToken);
+        slot.State.ShouldBe(SettlementSlotState.AlreadySettled);
+        slot.Existing!.Transaction.ShouldBe("0xdeadbeef");
+        logger.Levels.ShouldContain(LogLevel.Warning);
+    }
+
+    [Fact]
+    public async Task Completing_twice_with_the_same_outcome_is_a_no_op()
     {
         var ledger = new InMemorySettlementLedger();
         await ledger.AcquireAsync(Identity(), TestContext.Current.CancellationToken);
         await ledger.CompleteAsync(Identity(), Settled(), TestContext.Current.CancellationToken);
 
-        await Should.ThrowAsync<InvalidOperationException>(async () =>
-            await ledger.CompleteAsync(Identity(), Settled(), TestContext.Current.CancellationToken));
+        // A retried settle that reaches the facilitator a second time and gets the identical
+        // response back must not be treated as a conflict.
+        await ledger.CompleteAsync(Identity(), Settled(), TestContext.Current.CancellationToken);
+
+        var slot = await ledger.AcquireAsync(Identity(), TestContext.Current.CancellationToken);
+        slot.State.ShouldBe(SettlementSlotState.AlreadySettled);
+        slot.Existing!.Transaction.ShouldBe("0xdeadbeef");
+    }
+
+    [Fact]
+    public async Task Completing_twice_with_a_different_outcome_keeps_the_first()
+    {
+        var logger = new RecordingLogger();
+        var ledger = new InMemorySettlementLedger(logger: logger);
+        await ledger.AcquireAsync(Identity(), TestContext.Current.CancellationToken);
+        await ledger.CompleteAsync(Identity(), Settled(), TestContext.Current.CancellationToken);
+
+        var conflicting = Settled() with { Transaction = "0xconflict" };
+        await ledger.CompleteAsync(Identity(), conflicting, TestContext.Current.CancellationToken);
+
+        var slot = await ledger.AcquireAsync(Identity(), TestContext.Current.CancellationToken);
+        slot.State.ShouldBe(SettlementSlotState.AlreadySettled);
+        slot.Existing!.Transaction.ShouldBe("0xdeadbeef");
+        logger.Levels.ShouldContain(LogLevel.Warning);
+    }
+
+    private sealed class ManualTimeProvider(DateTimeOffset start) : TimeProvider
+    {
+        private DateTimeOffset now = start;
+
+        public override DateTimeOffset GetUtcNow() => now;
+
+        public void Advance(TimeSpan by) => now += by;
+    }
+
+    private sealed class RecordingLogger : ILogger<InMemorySettlementLedger>
+    {
+        public List<LogLevel> Levels { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state,
+            Exception? exception, Func<TState, Exception?, string> formatter) =>
+            Levels.Add(logLevel);
     }
 }

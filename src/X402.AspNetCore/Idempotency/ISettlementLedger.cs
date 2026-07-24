@@ -39,20 +39,31 @@ public interface ISettlementLedger
 {
     /// <summary>Claims the right to settle an authorization.</summary>
     /// <remarks>
-    /// The lease this grants is bounded by the same retention window the ledger uses to remember a
-    /// completed settlement — the default in-memory implementation does not track the two
-    /// separately. If the work performed between acquiring and completing an authorization (typically
-    /// broadcasting the settlement on-chain) ever runs longer than that window, the entry can expire
-    /// and be reclaimed by a second caller while the first is still settling. Size retention with
-    /// that shared duty in mind, not solely as a settled-record lifetime.
+    /// The lease this grants is bounded by a lease timeout — a separate window from the retention
+    /// used to remember a completed settlement, deliberately much longer. It exists purely as a
+    /// backstop against a caller that acquires and then never completes or abandons (most plausibly
+    /// a crash), and its default is sized far larger than any plausible endpoint-plus-settlement
+    /// round trip so it should never fire in normal operation. If it ever does, the entry is
+    /// reclaimed and a second caller can acquire the same identity — including concurrently with the
+    /// first caller, who is still settling; the ledger cannot prevent that once the lease is gone.
+    /// When the original caller eventually calls <see cref="CompleteAsync"/>, that call still
+    /// persists the settlement it carries — a missing entry there does not mean the caller did
+    /// anything wrong — but by then a duplicate settlement may already be in flight or complete.
+    /// Keep the lease timeout comfortably larger than the slowest realistic settlement so this
+    /// backstop stays a backstop and not a normal-path timeout.
     /// </remarks>
     ValueTask<SettlementSlot> AcquireAsync(
         PaymentIdentity identity, CancellationToken cancellationToken = default);
 
     /// <summary>Memorises the settlement outcome of an acquired authorization.</summary>
-    /// <exception cref="InvalidOperationException">
-    /// The identity was not acquired first, or was already completed.
-    /// </exception>
+    /// <remarks>
+    /// Always persists the given outcome: a settlement that already happened on-chain must never be
+    /// discarded, so this never throws. If the identity is not currently held as in-flight — never
+    /// acquired, or its lease was reclaimed by the backstop described on <see cref="AcquireAsync"/> —
+    /// the outcome is recorded anyway and the situation is logged, not rejected. Completing an
+    /// identity that already carries a different memorised outcome keeps the first recorded outcome
+    /// and logs the conflict; completing it again with the same outcome is a harmless no-op.
+    /// </remarks>
     ValueTask CompleteAsync(
         PaymentIdentity identity, SettleResponse response, CancellationToken cancellationToken = default);
 

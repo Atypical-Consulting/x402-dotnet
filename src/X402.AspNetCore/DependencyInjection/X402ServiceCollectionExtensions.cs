@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using X402.AspNetCore.Configuration;
 using X402.AspNetCore.Facilitator;
@@ -61,7 +62,8 @@ public static class X402ServiceCollectionExtensions
         // TryAdd: a commercial package substitutes these implementations without changing the core.
         services.TryAddSingleton<IFeatureGate, AllowAllFeatureGate>();
         services.TryAddSingleton<IPaymentEventSink, LoggerPaymentEventSink>();
-        services.TryAddSingleton<ISettlementLedger>(_ => new InMemorySettlementLedger());
+        services.TryAddSingleton<ISettlementLedger>(provider => new InMemorySettlementLedger(
+            logger: provider.GetRequiredService<ILogger<InMemorySettlementLedger>>()));
 
         AddFacilitatorClients(services);
 
