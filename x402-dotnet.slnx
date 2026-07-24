@@ -1,8 +1,10 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/X402.Client/X402.Client.csproj" />
     <Project Path="src/X402.Core/X402.Core.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/X402.Client.Tests/X402.Client.Tests.csproj" />
     <Project Path="tests/X402.Core.Tests/X402.Core.Tests.csproj" />
   </Folder>
 </Solution>

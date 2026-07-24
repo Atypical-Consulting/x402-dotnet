@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>X402.Client</PackageId>
+    <RootNamespace>X402.Client</RootNamespace>
+    <Description>Client-side signing for the x402 v2 payment protocol: builds and signs EIP-3009 transferWithAuthorization typed data.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Nethereum.Signer.EIP712" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\X402.Core\X402.Core.csproj" />
+  </ItemGroup>
+
+</Project>
