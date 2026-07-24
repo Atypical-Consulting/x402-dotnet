@@ -82,9 +82,30 @@ public sealed class SettlementLedgerTests
     {
         var ledger = new InMemorySettlementLedger();
         var identity = Identity();
+        const int concurrency = 64;
 
-        var slots = await Task.WhenAll(Enumerable.Range(0, 64).Select(
-            _ => ledger.AcquireAsync(identity, TestContext.Current.CancellationToken).AsTask()));
+        // AcquireAsync never awaits anything, so `Task.WhenAll(source.Select(x => AcquireAsync(x)))`
+        // would enumerate the whole source — running every call synchronously, one after another, on
+        // this thread — before Task.WhenAll ever has anything to wait on. That "concurrency" test
+        // would pass even against the broken factory-overload GetOrAdd the brief warns about, because
+        // nothing would ever actually contend. Task.Run forces each acquisition onto its own
+        // thread-pool thread, and the barrier holds all of them back until every one of the 64 is
+        // actually running, so they hit AcquireAsync at (as close as the runtime allows to) the same
+        // instant instead of merely at different times on different threads.
+        ThreadPool.GetMinThreads(out var minWorker, out var minCompletionPort);
+        ThreadPool.SetMinThreads(Math.Max(minWorker, concurrency), minCompletionPort);
+
+        using var barrier = new Barrier(concurrency);
+
+        var tasks = Enumerable.Range(0, concurrency)
+            .Select(_ => Task.Run(async () =>
+            {
+                barrier.SignalAndWait(TestContext.Current.CancellationToken);
+                return await ledger.AcquireAsync(identity, TestContext.Current.CancellationToken);
+            }))
+            .ToArray();
+
+        var slots = await Task.WhenAll(tasks);
 
         slots.Count(s => s.State == SettlementSlotState.Acquired).ShouldBe(1);
         slots.Count(s => s.State == SettlementSlotState.InFlight).ShouldBe(63);
@@ -103,5 +124,43 @@ public sealed class SettlementLedgerTests
         // protégerait plus rien et ferait croître la mémoire sans fin.
         var slot = await ledger.AcquireAsync(Identity(), TestContext.Current.CancellationToken);
         slot.State.ShouldBe(SettlementSlotState.Acquired);
+    }
+
+    [Fact]
+    public async Task Abandoning_a_completed_nonce_leaves_the_memorised_settlement_intact()
+    {
+        // A consumer wraps settle, then CompleteAsync, then a subsequent step (e.g. writing the
+        // response header) in one try/catch, calling AbandonAsync in the catch. If that later step
+        // throws after CompleteAsync already recorded a real on-chain settlement, AbandonAsync must
+        // not wipe it out — otherwise the next presentation of the authorization would settle again.
+        var ledger = new InMemorySettlementLedger();
+        await ledger.AcquireAsync(Identity(), TestContext.Current.CancellationToken);
+        await ledger.CompleteAsync(Identity(), Settled(), TestContext.Current.CancellationToken);
+
+        await ledger.AbandonAsync(Identity(), TestContext.Current.CancellationToken);
+
+        var slot = await ledger.AcquireAsync(Identity(), TestContext.Current.CancellationToken);
+        slot.State.ShouldBe(SettlementSlotState.AlreadySettled);
+        slot.Existing!.Transaction.ShouldBe("0xdeadbeef");
+    }
+
+    [Fact]
+    public async Task Completing_a_nonce_that_was_never_acquired_throws()
+    {
+        var ledger = new InMemorySettlementLedger();
+
+        await Should.ThrowAsync<InvalidOperationException>(async () =>
+            await ledger.CompleteAsync(Identity(), Settled(), TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task Completing_an_already_settled_nonce_throws()
+    {
+        var ledger = new InMemorySettlementLedger();
+        await ledger.AcquireAsync(Identity(), TestContext.Current.CancellationToken);
+        await ledger.CompleteAsync(Identity(), Settled(), TestContext.Current.CancellationToken);
+
+        await Should.ThrowAsync<InvalidOperationException>(async () =>
+            await ledger.CompleteAsync(Identity(), Settled(), TestContext.Current.CancellationToken));
     }
 }
