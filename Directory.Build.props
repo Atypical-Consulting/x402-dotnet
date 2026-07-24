@@ -27,7 +27,12 @@
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(IsPackable)' != 'false'">
+  <!-- Unconditional: the SDK computes DocumentationFile from this property before Directory.Build.targets
+       is imported, so a condition on IsPackable/IsTestProject here would always see them unset and would
+       not actually filter anything. Test projects that want to skip doc-comment enforcement (CS1591)
+       must set <GenerateDocumentationFile>false</GenerateDocumentationFile> in their own .csproj body,
+       which runs early enough (before the SDK's DocumentationFile default is computed) to take effect. -->
+  <PropertyGroup>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
 
