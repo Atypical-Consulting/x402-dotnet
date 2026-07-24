@@ -181,6 +181,49 @@ public sealed class OptionsValidationTests
     }
 
     [Fact]
+    public void A_negative_buffered_response_byte_limit_fails_at_startup()
+    {
+        var exception = Should.Throw<OptionsValidationException>(
+            () => Validate(o => o.MaxBufferedResponseBytes = -1));
+
+        exception.Message.ShouldContain("MaxBufferedResponseBytes");
+    }
+
+    [Fact]
+    public void A_service_name_longer_than_32_characters_fails_at_startup()
+    {
+        var exception = Should.Throw<OptionsValidationException>(
+            () => Validate(o => o.ServiceName = new string('a', 33)));
+
+        exception.Message.ShouldContain("ServiceName");
+    }
+
+    [Fact]
+    public void More_than_five_tags_fails_at_startup()
+    {
+        var exception = Should.Throw<OptionsValidationException>(() => Validate(o =>
+        {
+            for (var i = 0; i < 6; i++)
+            {
+                o.Tags.Add($"tag{i}");
+            }
+        }));
+
+        exception.Message.ShouldContain("Tags");
+    }
+
+    [Fact]
+    public void A_relative_facilitator_url_fails_at_startup()
+    {
+        // Distinct from the https/loopback branch: this one is rejected before the scheme is
+        // even inspected, because a relative Uri has none.
+        var exception = Should.Throw<OptionsValidationException>(
+            () => Validate(o => o.FacilitatorUrl = new Uri("facilitator", UriKind.Relative)));
+
+        exception.Message.ShouldContain("FacilitatorUrl");
+    }
+
+    [Fact]
     public void Options_expose_no_private_key_property()
     {
         // The non-custodial constraint is structural: it must stay unbreakable by accident. This
