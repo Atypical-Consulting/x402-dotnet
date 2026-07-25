@@ -1,0 +1,7 @@
+x402-dotnet
+Copyright (c) 2026 Atypical Consulting / Philippe Matray
+
+Licensed under the Apache License, Version 2.0.
+
+This product implements the x402 protocol, specified by the x402 Foundation
+(https://github.com/x402-foundation/x402), also licensed under Apache-2.0.

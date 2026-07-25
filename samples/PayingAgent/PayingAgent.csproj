@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <!-- A sample, not a library: no public API surface for CS1591 to police. Comments below
+         explain what a reader needs, not what a NuGet consumer's IntelliSense needs. -->
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Http" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\X402.Client\X402.Client.csproj" />
+    <!-- Only for the probe mode: IFacilitatorClient (and AddX402 to build one) live here, not in
+         X402.Client — a paying agent never otherwise talks to a facilitator directly. -->
+    <ProjectReference Include="..\..\src\X402.AspNetCore\X402.AspNetCore.csproj" />
+    <!-- Only for the probe's fake mode: an in-process facilitator for a fully offline dry run. -->
+    <ProjectReference Include="..\..\tests\X402.TestKit\X402.TestKit.csproj" />
+  </ItemGroup>
+
+</Project>

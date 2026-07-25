@@ -1,0 +1,26 @@
+name: PR title lint
+
+# release-please derives the next semantic version from Conventional Commits on main
+# (release-please-config.json). This repo squash-merges PRs, so the PR title becomes the commit
+# message on main — a non-conforming title is rejected here, before merge, rather than silently
+# producing no version bump.
+
+on:
+  pull_request_target:
+    # A code push (`synchronize`) can't change the PR title, so re-linting on it is wasted work;
+    # lint only when the title can actually change, or a draft PR flips to ready (the job below
+    # re-evaluates the draft gate at that point too).
+    types: [opened, edited, reopened, ready_for_review]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  lint-pr-title:
+    # Skip draft PRs — a draft's title isn't final yet, so don't flag it before the author is ready.
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@v6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

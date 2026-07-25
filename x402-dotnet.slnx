@@ -1,0 +1,19 @@
+<Solution>
+  <Folder Name="/samples/">
+    <Project Path="samples/PaidApi/PaidApi.csproj" />
+    <Project Path="samples/PayingAgent/PayingAgent.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/X402.AspNetCore/X402.AspNetCore.csproj" />
+    <Project Path="src/X402.Client/X402.Client.csproj" />
+    <Project Path="src/X402.Core/X402.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/X402.AspNetCore.Tests/X402.AspNetCore.Tests.csproj" />
+    <Project Path="tests/X402.Client.Tests/X402.Client.Tests.csproj" />
+    <Project Path="tests/X402.Core.Tests/X402.Core.Tests.csproj" />
+    <Project Path="tests/X402.Integration.Tests/X402.Integration.Tests.csproj" />
+    <Project Path="tests/X402.TestKit.Tests/X402.TestKit.Tests.csproj" />
+    <Project Path="tests/X402.TestKit/X402.TestKit.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,11 @@
+<Project>
+
+  <ItemGroup Condition="'$(IsPackable)' != 'false'">
+    <None Include="$(MSBuildThisFileDirectory)nuget-readme.md" Pack="true" PackagePath="README.md" />
+  </ItemGroup>
+
+  <PropertyGroup Condition="'$(IsPackable)' != 'false'">
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+</Project>

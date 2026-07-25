@@ -1,6 +1,8 @@
 # Build results
 bin/
 obj/
+nupkg/
+*.nupkg
 
 # IDE
 .vs/
@@ -12,3 +14,9 @@ obj/
 # Local config
 appsettings.Local.json
 *.user
+
+# Test output
+*.log
+
+# SDD workspace (scratch, not part of the deliverable)
+.superpowers/

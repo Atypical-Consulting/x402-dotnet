@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <!-- Directory.Build.props sets GenerateDocumentationFile unconditionally (see the comment
+         there): test projects opt back out here so xunit's public test classes/methods are not
+         subject to CS1591. -->
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- PaidApiFixture hosts a real X402.AspNetCore pipeline on an in-memory TestServer, the same
+         pattern X402.AspNetCore.Tests' PaidServerFixture already uses, and wires a real
+         X402PaymentHandler onto that same TestServer's handler for the paying side. -->
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="Shouldly" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="coverlet.collector">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+    <Using Include="Shouldly" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\X402.AspNetCore\X402.AspNetCore.csproj" />
+    <ProjectReference Include="..\..\src\X402.Client\X402.Client.csproj" />
+    <!-- FakeFacilitator: the only simulated half of the chain, and it verifies EIP-3009
+         signatures for real. -->
+    <ProjectReference Include="..\X402.TestKit\X402.TestKit.csproj" />
+  </ItemGroup>
+
+</Project>

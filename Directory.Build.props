@@ -1,0 +1,39 @@
+<Project>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <Deterministic>true</Deterministic>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+  </PropertyGroup>
+
+  <!-- Version et InformationalVersion sont pilotées par release-please (tâche 18).
+       Ne pas les éditer à la main, ne pas retirer les marqueurs x-release-please-version. -->
+  <PropertyGroup>
+    <Version>0.1.0</Version> <!-- x-release-please-version -->
+    <InformationalVersion>0.1.0</InformationalVersion> <!-- x-release-please-version -->
+    <Authors>Philippe Matray</Authors>
+    <Company>Atypical Consulting</Company>
+    <Copyright>Copyright (c) 2026 Atypical Consulting / Philippe Matray</Copyright>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/Atypical-Consulting/x402-dotnet</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/Atypical-Consulting/x402-dotnet</PackageProjectUrl>
+    <PackageTags>x402;payments;stablecoin;eurc;usdc;micropayments;base;eip3009;aspnetcore</PackageTags>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+  </PropertyGroup>
+
+  <!-- Unconditional: the SDK computes DocumentationFile from this property before Directory.Build.targets
+       is imported, so a condition on IsPackable/IsTestProject here would always see them unset and would
+       not actually filter anything. Test projects that want to skip doc-comment enforcement (CS1591)
+       must set <GenerateDocumentationFile>false</GenerateDocumentationFile> in their own .csproj body,
+       which runs early enough (before the SDK's DocumentationFile default is computed) to take effect. -->
+  <PropertyGroup>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+</Project>
