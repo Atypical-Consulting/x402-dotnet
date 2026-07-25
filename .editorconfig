@@ -149,14 +149,13 @@ dotnet_naming_rule.constants_pascal.style = pascal_case
 dotnet_naming_symbols.constants.applicable_kinds = field
 dotnet_naming_symbols.constants.required_modifiers = const
 
-# Private/internal instance fields: _camelCase (as the compiler uses: _index, _scalarNeeds)
-dotnet_naming_rule.private_fields_underscore.severity = warning
-dotnet_naming_rule.private_fields_underscore.symbols = private_fields
-dotnet_naming_rule.private_fields_underscore.style = underscore_camel_case
-dotnet_naming_symbols.private_fields.applicable_kinds = field
-dotnet_naming_symbols.private_fields.applicable_accessibilities = private,private_protected
-dotnet_naming_style.underscore_camel_case.required_prefix = _
-dotnet_naming_style.underscore_camel_case.capitalization = camel_case
+# Private/internal instance fields: bare camelCase (no leading underscore). This is the real,
+# consistent convention in this codebase — every private field in the repository is camelCase
+# without a prefix, at zero build warnings. An _camelCase rule lived here once, but IDE1006
+# naming analyzers do not run in-build (EnforceCodeStyleInBuild does not cover them), so it was
+# purely decorative: it matched nothing that was ever actually written, and the day an SDK update
+# started enforcing it, TreatWarningsAsErrors would have failed every project in the solution at
+# once. Removed rather than enforced, so this file says what the code does.
 
 # Static readonly private fields may be PascalCase OR _camelCase — keep PascalCase rule lenient
 dotnet_naming_rule.static_private_fields_pascal.severity = silent
