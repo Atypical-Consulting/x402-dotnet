@@ -122,4 +122,29 @@ public sealed class Eip3009TypedDataTests
         typedData.Domain.ChainId.ShouldBe(new BigInteger(84532));
         typedData.Domain.VerifyingContract.ShouldBe(KnownAssets.EurcBaseSepolia.Address);
     }
+
+    [Fact]
+    public void Build_rejects_an_asset_on_a_different_network_than_the_requirement()
+    {
+        // The requirement names Base Sepolia; the asset passed in is the SAME token but resolved
+        // on Base mainnet. A custom IPaymentSigner that mixed these up would otherwise sign a
+        // valid-looking authorization for the wrong chain.
+        var requirements = Requirements(KnownAssets.EurcBaseSepolia);
+
+        Should.Throw<ArgumentException>(() =>
+                Eip3009TypedData.Build(requirements, Authorization(), KnownAssets.EurcBaseMainnet))
+            .Message.ShouldContain("network");
+    }
+
+    [Fact]
+    public void Build_rejects_an_asset_naming_a_different_contract_than_the_requirement()
+    {
+        // Same network, different token: the requirement asks for EURC but the descriptor passed
+        // in is USDC's. Signing would authorize a transfer of the wrong token entirely.
+        var requirements = Requirements(KnownAssets.EurcBaseSepolia);
+
+        Should.Throw<ArgumentException>(() =>
+                Eip3009TypedData.Build(requirements, Authorization(), KnownAssets.UsdcBaseSepolia))
+            .Message.ShouldContain("contract address");
+    }
 }

@@ -14,17 +14,47 @@ namespace X402.Client.Signing;
 /// <remarks>
 /// The domain comes from the locally resolved <see cref="AssetDescriptor"/>, never from the
 /// requirement's <c>extra</c> field. <c>extra</c> arrives over the network: honouring it would let
-/// a server choose the domain a payer signs under.
+/// a server choose the domain a payer signs under. The <c>asset</c> parameter of <see cref="Build"/>
+/// is cross-checked against its <c>requirements</c> parameter for exactly that reason: the
+/// descriptor is what decides the signed domain, so a caller must not be able to pass one that
+/// names a different network or contract than the requirement it is meant to satisfy.
 /// </remarks>
 public static class Eip3009TypedData
 {
     /// <summary>Builds the typed data to sign.</summary>
+    /// <exception cref="ArgumentException">
+    /// <paramref name="asset"/> names a different network or contract address than
+    /// <paramref name="requirements"/>.
+    /// </exception>
     public static TypedData<Domain> Build(
         PaymentRequirements requirements, Eip3009Authorization authorization, AssetDescriptor asset)
     {
         ArgumentNullException.ThrowIfNull(requirements);
         ArgumentNullException.ThrowIfNull(authorization);
         ArgumentNullException.ThrowIfNull(asset);
+
+        // Structural cross-check, not merely a null check: this is what keeps a custom
+        // IPaymentSigner from being able to sign for a token other than the one being paid for —
+        // see the type-level remarks. Every reader of this parameter list is entitled to assume
+        // requirements and asset were already verified to match; make that true here rather than
+        // relying on the one caller that happens to get it right today.
+        if (!string.Equals(asset.Network, requirements.Network, StringComparison.Ordinal))
+        {
+            throw new ArgumentException(
+                $"The asset's network ('{asset.Network}') does not match the requirement's " +
+                $"network ('{requirements.Network}'). Signing under the wrong network would " +
+                "produce an authorization valid on a different chain than the one being paid for.",
+                nameof(asset));
+        }
+
+        if (!string.Equals(asset.Address, requirements.Asset, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException(
+                $"The asset's contract address ('{asset.Address}') does not match the " +
+                $"requirement's asset ('{requirements.Asset}'). Signing for the wrong token would " +
+                "authorize a transfer of a token other than the one the payer intended to spend.",
+                nameof(asset));
+        }
 
         var network = Caip2Network.Parse(asset.Network);
         if (!network.IsEvm)
