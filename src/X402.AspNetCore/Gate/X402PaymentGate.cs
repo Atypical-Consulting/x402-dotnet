@@ -53,6 +53,16 @@ internal sealed class X402PaymentGate(
             // this same feature.
             processor.OpenBuffering(context, feature, attempt);
         }
+        else
+        {
+            // Buffered too, even though there is nothing to settle: this is what lets
+            // X402Middleware.RunProtectedAsync reliably withhold a response from a caller that
+            // ignores PaymentGateResult.CanContinue and writes one anyway — see the hazard
+            // documented there and on IX402PaymentGate.RequireAsync. Without this, such a write
+            // would reach the real transport directly, and the response would already have started
+            // by the time anything downstream could intervene.
+            processor.OpenRefusalBuffering(context, feature, attempt);
+        }
 
         return new PaymentGateResult(attempt);
     }

@@ -28,6 +28,14 @@ public sealed class PaymentGateResult
     /// endpoint or an MVC controller — a conflict is never a special case the caller has to
     /// remember.
     /// </summary>
+    /// <remarks>
+    /// A caller that ignores this — proceeds to write a response instead of returning
+    /// <see cref="Result"/> when <see cref="CanContinue"/> is false — has a bug. It is not a
+    /// profitable one: the response is buffered the same way a real payment's is, so the pipeline
+    /// discards whatever was written and delivers this refusal in its place once the handler
+    /// returns, logging the substitution at <c>LogLevel.Error</c>. Do not rely on this backstop —
+    /// check <see cref="CanContinue"/> before writing anything.
+    /// </remarks>
     public X402HandlerResult? Result { get; }
 
     /// <summary>The asset the payer chose, once payment is accepted.</summary>

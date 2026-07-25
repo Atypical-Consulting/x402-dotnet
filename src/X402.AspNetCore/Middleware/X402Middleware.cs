@@ -73,11 +73,22 @@ internal sealed partial class X402Middleware(
         {
             // Settlement was attempted — and failed — exactly when the buffer crossed the cap,
             // before anything reached the real network: still refuse cleanly. This exception type
-            // can only be thrown by the buffering feature itself, so a payment must be open here.
+            // can only be thrown by the buffering feature itself, so buffering must be open here —
+            // for an accepted attempt (feature.Attempt set) or for a refused one buffered
+            // defensively by OpenRefusalBuffering (feature.Refusal set instead; see the hazard
+            // documented on IX402PaymentGate.RequireAsync).
             var buffering = feature.Buffer!;
             buffering.Discard();
             RestoreOriginalBody(context, feature);
-            await new PaymentRequiredResult(feature.Attempt!.Demand!).ExecuteAsync(context);
+            if (feature.Attempt is { } attempt)
+            {
+                await new PaymentRequiredResult(attempt.Demand!).ExecuteAsync(context);
+            }
+            else
+            {
+                await WriteRefusalAsync(context, feature.Refusal!);
+            }
+
             return;
         }
         catch (Exception exception) when (feature.Attempt is not null)
@@ -126,8 +137,11 @@ internal sealed partial class X402Middleware(
 
         if (feature.Attempt is null)
         {
-            // No payment was opened for this request, by a route match or by the gate. Nothing to
-            // settle.
+            // No accepted payment was opened for this request. Either nothing priced it at all (no
+            // route matched and the gate was never called — feature.Refusal is then also null and
+            // FinishRefusalAsync is a no-op), or the imperative gate refused, in which case
+            // OpenRefusalBuffering already captured whatever the endpoint wrote next.
+            await FinishRefusalAsync(context, feature);
             return;
         }
 
@@ -177,6 +191,46 @@ internal sealed partial class X402Middleware(
         }
     }
 
+    /// <summary>
+    /// Decides what happens to whatever a refused gate call's endpoint wrote, once it returns
+    /// without throwing. <see cref="Gate.X402PaymentGate.RequireAsync"/> buffers a refusal exactly
+    /// like an accepted attempt (<see cref="X402PaymentProcessor.OpenRefusalBuffering"/>), so — same
+    /// guarantee <see cref="X402PaymentProcessor.FinishAsync"/> relies on for a real payment —
+    /// nothing the endpoint wrote has reached the real transport yet, whichever branch below is
+    /// taken.
+    /// </summary>
+    /// <remarks>
+    /// A well-behaved endpoint returned <c>PaymentGateResult.Result</c> unchanged: its status is
+    /// never 2xx, so what it wrote — normally the 402/409 body itself — is simply released. An
+    /// endpoint that ignored <c>CanContinue</c> and wrote a success response anyway never gets to
+    /// keep it: the buffered bytes are discarded and replaced with the refusal that should have been
+    /// returned, and the substitution is logged at <c>LogLevel.Error</c> — an endpoint bug that would
+    /// have served paid content for free must never be silent, even though this pipeline caught it.
+    /// </remarks>
+    private async Task FinishRefusalAsync(HttpContext context, X402RequestFeature feature)
+    {
+        if (feature.Refusal is not { } refusal || feature.Buffer is not { } buffering)
+        {
+            // Nothing priced this request through the gate at all: no route matched, and the
+            // endpoint never called IX402PaymentGate.RequireAsync either.
+            return;
+        }
+
+        if (context.Response.StatusCode is >= 200 and < 300)
+        {
+            RefusalIgnored(
+                logger, context.Request.Path.Value ?? "", context.Response.StatusCode,
+                refusal.FailureReason ?? "");
+
+            buffering.Discard();
+            context.Response.Headers.Clear();
+            await WriteRefusalAsync(context, refusal);
+            return;
+        }
+
+        await buffering.FlushBufferAsync(context.RequestAborted);
+    }
+
     [LoggerMessage(EventId = 4040, Level = LogLevel.Error,
         Message = "x402 payment for {Network}/{Asset}/{Nonce} abandoned: the endpoint threw before " +
                   "settlement. Rethrowing so the host's own error handling sees it.")]
@@ -189,4 +243,11 @@ internal sealed partial class X402Middleware(
                   "sees it.")]
     private static partial void EndpointThrewAfterSettlement(
         ILogger logger, Exception exception, string network, string asset, string nonce);
+
+    [LoggerMessage(EventId = 4042, Level = LogLevel.Error,
+        Message = "x402: {Path} returned {StatusCode} after IX402PaymentGate.RequireAsync refused " +
+                  "payment ({Reason}) — the endpoint ignored PaymentGateResult.CanContinue and " +
+                  "served paid content for free. Withholding the response where still possible.")]
+    private static partial void RefusalIgnored(
+        ILogger logger, string path, int statusCode, string reason);
 }

@@ -139,4 +139,26 @@ public sealed class PaymentGateTests
         response.StatusCode.ShouldBe(HttpStatusCode.InternalServerError);
         server.LastServerError.ShouldContain("UseX402");
     }
+
+    [Fact]
+    public async Task An_endpoint_that_ignores_a_refusal_does_not_get_to_keep_the_content()
+    {
+        // /analyze-ignoring-refusal discards PaymentGateResult.CanContinue and writes success
+        // content regardless — exactly the bug this test exists to catch. No payment is attached,
+        // so the gate refuses; the endpoint ignores that and serves the content anyway.
+        await using var server = await PaidServerFixture.StartAsync();
+
+        var response = await server.Client.GetAsync(
+            "/analyze-ignoring-refusal", TestContext.Current.CancellationToken);
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        // Withheld: the pipeline overwrites the ignored 200 with the refusal it should have been.
+        response.StatusCode.ShouldBe(HttpStatusCode.PaymentRequired);
+        body.ShouldNotContain("content that was never paid for");
+
+        // And it must never be a SILENT free ride, even on a request where withholding somehow
+        // could not happen: the loud log is the unconditional half of this guarantee.
+        server.LoggedErrors.ShouldContain(
+            message => message.Contains("ignored PaymentGateResult.CanContinue"));
+    }
 }

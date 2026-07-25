@@ -30,4 +30,13 @@ internal sealed class X402RequestFeature
     /// middleware itself.
     /// </summary>
     public IHttpResponseBodyFeature? OriginalBody { get; set; }
+
+    /// <summary>
+    /// The refusal <c>IX402PaymentGate.RequireAsync</c> issued for this request, when it refused.
+    /// Recorded even though <see cref="Attempt"/> deliberately stays null for a refusal (see its own
+    /// remarks) — its only job is to let the outbound half of the pipeline notice an endpoint that
+    /// ignored <c>PaymentGateResult.CanContinue</c> and kept writing a response anyway. See
+    /// <c>X402Middleware.RunProtectedAsync</c>.
+    /// </summary>
+    public PaymentAttempt? Refusal { get; set; }
 }

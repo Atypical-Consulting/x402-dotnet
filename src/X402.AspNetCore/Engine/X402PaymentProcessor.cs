@@ -161,11 +161,41 @@ internal sealed class X402PaymentProcessor(
     internal BufferingResponseBodyFeature OpenBuffering(
         HttpContext context, X402RequestFeature feature, PaymentAttempt attempt)
     {
+        var buffering = InstallBuffering(context, feature, ct => SettleAsync(context, attempt, ct));
+        feature.Attempt = attempt;
+        return buffering;
+    }
+
+    /// <summary>
+    /// Installs response buffering for a <em>refused</em> imperative-gate attempt — the same
+    /// mechanism <see cref="OpenBuffering"/> installs for an accepted one, and for the same reason:
+    /// without it, an endpoint that ignores <c>PaymentGateResult.CanContinue</c> and writes a
+    /// response anyway would reach the real transport directly, and nothing downstream could tell —
+    /// let alone withhold it — once the response has started. Deliberately does not set
+    /// <paramref name="feature"/>'s <see cref="X402RequestFeature.Attempt"/>: that stays null, which
+    /// is what the rest of this class and <see cref="Middleware.X402Middleware"/> rely on to mean
+    /// "no payment was accepted, nothing to settle." <see cref="Middleware.X402Middleware"/> reads
+    /// <see cref="X402RequestFeature.Refusal"/> and this same buffer once the handler returns, to
+    /// decide whether to release what was written or withhold it.
+    /// </summary>
+    internal BufferingResponseBodyFeature OpenRefusalBuffering(
+        HttpContext context, X402RequestFeature feature, PaymentAttempt refusal)
+    {
+        // No settlement is possible for a refusal, so there is nothing a cap-crossing write could
+        // hand off to — any overflow is simply unrecoverable here, same as a failed settlement
+        // would be for an accepted attempt.
+        var buffering = InstallBuffering(context, feature, _ => Task.FromResult(false));
+        feature.Refusal = refusal;
+        return buffering;
+    }
+
+    private BufferingResponseBodyFeature InstallBuffering(
+        HttpContext context, X402RequestFeature feature, Func<CancellationToken, Task<bool>> onOverflowAsync)
+    {
         var original = context.Features.Get<IHttpResponseBodyFeature>()!;
         var buffering = new BufferingResponseBodyFeature(
-            original, settings.MaxBufferedResponseBytes, ct => SettleAsync(context, attempt, ct));
+            original, settings.MaxBufferedResponseBytes, onOverflowAsync);
 
-        feature.Attempt = attempt;
         feature.Buffer = buffering;
         feature.OriginalBody = original;
         context.Features.Set<IHttpResponseBodyFeature>(buffering);

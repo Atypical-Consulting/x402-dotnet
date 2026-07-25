@@ -32,11 +32,13 @@ namespace X402.AspNetCore.Tests;
 /// <remarks>
 /// Routes mounted by default, when <c>routes</c> is not supplied to <see cref="StartAsync"/>:
 /// <c>/free</c> (unpriced), <c>/premium</c> and <c>/boom</c> (EURC 0.010 then USDC 0.011),
-/// <c>/large</c> (same prices, streams 64 KiB), and <c>/large-swallowing</c> (same as
-/// <c>/large</c>, but swallows whatever each write throws). Supplying <c>routes</c> replaces this
-/// default set entirely, for tests that need their own route table (see
-/// <c>RouteMappingTests</c>). Any path not otherwise mapped answers 200 OK, so a route declared
-/// but never paid for still has something to reach.
+/// <c>/large</c> (same prices, streams 64 KiB), <c>/large-swallowing</c> (same as
+/// <c>/large</c>, but swallows whatever each write throws), and
+/// <c>/analyze-ignoring-refusal</c> (deliberately buggy: ignores a gate refusal and serves content
+/// anyway, for <c>PaymentGateTests</c>). Supplying <c>routes</c> replaces this default set
+/// entirely, for tests that need their own route table (see <c>RouteMappingTests</c>). Any path
+/// not otherwise mapped answers 200 OK, so a route declared but never paid for still has
+/// something to reach.
 /// </remarks>
 public sealed class PaidServerFixture : IAsyncDisposable
 {
@@ -221,6 +223,7 @@ public sealed class PaidServerFixture : IAsyncDisposable
                         endpoints.MapGet("/large-swallowing", WriteLargeBodySwallowingExceptionsAsync);
                         endpoints.MapPost("/analyze", AnalyzeAsync);
                         endpoints.MapPost("/by-size", BySizeAsync);
+                        endpoints.MapGet("/analyze-ignoring-refusal", IgnoringRefusalAsync);
 
                         // A test that declares its own route table (see RouteMappingTests) can
                         // reach paths never mapped above; anything unmatched still needs to answer
@@ -413,6 +416,21 @@ public sealed class PaidServerFixture : IAsyncDisposable
         }
 
         await context.Response.WriteAsync("ok", context.RequestAborted);
+    }
+
+    /// <summary>
+    /// Deliberately buggy: discards <c>PaymentGateResult.CanContinue</c> and serves content
+    /// unconditionally, exactly the shape <c>PaymentGateTests</c> uses to prove the pipeline's own
+    /// guard against an endpoint that ignores a refusal (see the hazard documented on
+    /// <see cref="IX402PaymentGate.RequireAsync"/>).
+    /// </summary>
+    private static async Task IgnoringRefusalAsync(HttpContext context, IX402PaymentGate gate)
+    {
+        _ = await gate.RequireAsync(
+            DynamicPricing.ForTokens(1), cancellationToken: context.RequestAborted);
+
+        await context.Response.WriteAsync(
+            "content that was never paid for", context.RequestAborted);
     }
 
     private sealed class RequestCounter

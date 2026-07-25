@@ -26,6 +26,16 @@ public interface IX402PaymentGate
     /// Called outside an HTTP request, called without <c>UseX402()</c> in the pipeline, or called
     /// after the response has already started.
     /// </exception>
+    /// <remarks>
+    /// <b>Ignoring a refusal is a hazard, not a suggestion — but not a profitable one.</b> A refusal
+    /// is buffered exactly like an accepted payment, so if the caller does not check
+    /// <c>CanContinue</c> and return <c>Result</c> — writing a success response regardless — nothing
+    /// it writes reaches the real transport before the pipeline gets a chance to look. Once the
+    /// handler returns, it discards that response, delivers the refusal that should have been
+    /// returned in its place, and logs the substitution at <c>LogLevel.Error</c>. This is a backstop
+    /// for a bug, not a licence to skip the check: still verify <c>CanContinue</c> before writing
+    /// anything, every time.
+    /// </remarks>
     ValueTask<PaymentGateResult> RequireAsync(
         PriceSet prices,
         PaymentGateOptions? options = null,
