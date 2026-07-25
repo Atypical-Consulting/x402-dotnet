@@ -34,11 +34,13 @@ Paying agent — three calls to http://localhost:8402, no payment logic below.
 
 GET  /weather           -> 200 (no payment required)
 GET  /weather/detailed  -> payment failed: The server demanded payment again for
-                            'http://localhost:8402/weather/detailed' after this client paid for it.
+                            'http://localhost:8402/weather/detailed' after this client
+                            paid for it: invalid_exact_evm_insufficient_balance.
                             Refusing to retry a second time.
 POST /analyze           -> payment failed: The server demanded payment again for
-                            'http://localhost:8402/analyze' after this client paid for it.
-                            Refusing to retry a second time.
+                            'http://localhost:8402/analyze' after this client paid for
+                            it: invalid_exact_evm_insufficient_balance. Refusing to
+                            retry a second time.
 ```
 
 The free call answers normally. Both paid calls get a 402, sign an authorization, and replay it —
@@ -56,9 +58,13 @@ of the codes `X402ErrorReason` declares (the library's own constant is `insuffic
 real facilitator uses a different string, and this library passes it through verbatim rather than
 guessing at it, exactly as documented on `X402ErrorReason`. Second, this is the *whole* failure
 mode: no crash, no hang, one exception with a message you can act on
-(`X402.Client.PaymentRejectedException`, caught in `PayingAgent/Program.cs` and printed). An
-example that fails this cleanly is worth more than one that requires a funded wallet before it
-proves anything.
+(`X402.Client.PaymentRejectedException`, caught in `PayingAgent/Program.cs` and printed) — and that
+reason is not just embedded in the printed text: `PayingAgent` never reads `PaidApi`'s log (a
+third-party API's log is never readable from the paying side at all), so the handler decodes the
+second `PAYMENT-REQUIRED` itself and puts `invalid_exact_evm_insufficient_balance` on
+`PaymentRejectedException.Reason`, with the full refused demand on `.PaymentRequired` — a caller can
+branch on the reason programmatically, not just log the message. An example that fails this cleanly
+is worth more than one that requires a funded wallet before it proves anything.
 
 ### Getting a wallet that actually pays
 

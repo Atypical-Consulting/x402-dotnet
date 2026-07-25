@@ -162,6 +162,41 @@ public sealed class PaymentHandlerTests
     }
 
     [Fact]
+    public async Task A_second_402_carries_the_servers_reason_on_the_exception()
+    {
+        // The actionable string a real facilitator returns — e.g.
+        // invalid_exact_evm_insufficient_balance — otherwise exists only in the server's own log,
+        // which an agent paying a third-party API cannot read. Decoding the second PAYMENT-REQUIRED
+        // and exposing it here is what samples/README.md's "one exception with a message you can
+        // act on" claim depends on.
+        using var harness = PayingClientHarness.CreateAlwaysPaywalled(
+            KnownAssets.EurcBaseSepolia, rejectionReason: "invalid_exact_evm_insufficient_balance");
+
+        var exception = await Should.ThrowAsync<PaymentRejectedException>(
+            () => harness.Client.GetAsync("https://api.test/premium",
+                TestContext.Current.CancellationToken));
+
+        exception.Reason.ShouldBe("invalid_exact_evm_insufficient_balance");
+        exception.Message.ShouldContain("invalid_exact_evm_insufficient_balance");
+        exception.PaymentRequired.ShouldNotBeNull();
+        exception.PaymentRequired.Accepts.ShouldNotBeEmpty();
+    }
+
+    [Fact]
+    public async Task A_second_402_with_no_stated_reason_still_says_so_rather_than_stay_silent()
+    {
+        using var harness = PayingClientHarness.CreateAlwaysPaywalled(KnownAssets.EurcBaseSepolia);
+
+        var exception = await Should.ThrowAsync<PaymentRejectedException>(
+            () => harness.Client.GetAsync("https://api.test/premium",
+                TestContext.Current.CancellationToken));
+
+        exception.Reason.ShouldBeNull();
+        exception.Message.ShouldContain("the server gave no reason");
+        exception.PaymentRequired.ShouldNotBeNull();
+    }
+
+    [Fact]
     public async Task The_settlement_receipt_is_exposed_on_the_response()
     {
         using var harness = PayingClientHarness.CreatePaywall(KnownAssets.EurcBaseSepolia);

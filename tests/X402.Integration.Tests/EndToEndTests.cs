@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using X402.Assets;
 using X402.Client;
+using X402.Protocol;
 using X402.TestKit;
 
 namespace X402.Integration.Tests;
@@ -46,8 +47,16 @@ public sealed class EndToEndTests
         await using var fixture = await PaidApiFixture.StartAsync();
         fixture.Facilitator.Scenario = FakeFacilitatorScenario.InsufficientFunds;
 
-        await Should.ThrowAsync<PaymentRejectedException>(
+        var exception = await Should.ThrowAsync<PaymentRejectedException>(
             () => fixture.Agent.GetAsync("/premium", TestContext.Current.CancellationToken));
+
+        // Genuinely round-tripped, not asserted against a hand-built harness: X402.AspNetCore
+        // itself put this reason on the second PAYMENT-REQUIRED, and X402PaymentHandler decoded
+        // that real header rather than a test double's. See PaymentHandlerTests for the unit-level
+        // coverage of every shape (a reason given, none given, an undecodable header).
+        exception.Reason.ShouldBe(X402ErrorReason.InsufficientFunds);
+        exception.Message.ShouldContain(X402ErrorReason.InsufficientFunds);
+        exception.PaymentRequired.ShouldNotBeNull();
     }
 
     [Fact]

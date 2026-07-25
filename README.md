@@ -229,7 +229,9 @@ try
 }
 catch (PaymentRejectedException ex)
 {
-    // The facilitator refused settlement — e.g. an empty testnet wallet.
+    // The facilitator refused settlement — e.g. an empty testnet wallet. ex.Reason carries the
+    // server's own explanation when it gave one (e.g. "invalid_exact_evm_insufficient_balance"),
+    // and ex.PaymentRequired the full refused demand — no need to read the server's own log.
     // See samples/README.md for the real, unedited failure this looks like.
 }
 ```

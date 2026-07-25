@@ -102,13 +102,18 @@ public sealed class PayingClientHarness : IDisposable
 
     /// <summary>
     /// Builds a harness whose "server" demands payment for <paramref name="asset"/> and keeps
-    /// demanding it again even after being paid — so a second reply never settles.
+    /// demanding it again even after being paid — so a second reply never settles. When
+    /// <paramref name="rejectionReason"/> is given, the second (rejecting) demand carries it as
+    /// <see cref="PaymentRequired.Error"/> — the same field <c>PaymentRejectedException.Reason</c>
+    /// is meant to surface.
     /// </summary>
-    public static PayingClientHarness CreateAlwaysPaywalled(AssetDescriptor asset) =>
-        CreatePaywall([asset], alwaysPaywall: true, configure: null);
+    public static PayingClientHarness CreateAlwaysPaywalled(
+        AssetDescriptor asset, string? rejectionReason = null) =>
+        CreatePaywall([asset], alwaysPaywall: true, configure: null, rejectionReason);
 
     private static PayingClientHarness CreatePaywall(
-        IReadOnlyList<AssetDescriptor> assets, bool alwaysPaywall, Action<X402ClientOptions>? configure)
+        IReadOnlyList<AssetDescriptor> assets, bool alwaysPaywall, Action<X402ClientOptions>? configure,
+        string? rejectionReason = null)
     {
         var options = new X402ClientOptions();
         foreach (var asset in assets)
@@ -122,20 +127,23 @@ public sealed class PayingClientHarness : IDisposable
         configure?.Invoke(options);
 
         return new PayingClientHarness(options, (request, recorded) =>
-            RespondToPaywalled(request, recorded, assets, alwaysPaywall));
+            RespondToPaywalled(request, recorded, assets, alwaysPaywall, rejectionReason));
     }
 
     private static Task<HttpResponseMessage> RespondToPaywalled(
         HttpRequestMessage request, RecordedRequest recorded, IReadOnlyList<AssetDescriptor> assets,
-        bool alwaysPaywall)
+        bool alwaysPaywall, string? rejectionReason)
     {
         if (!alwaysPaywall && recorded.Payload is not null)
         {
             return Task.FromResult(Settle(recorded.Payload, recorded.Body));
         }
 
+        // A rejection reason only makes sense once a payment was actually presented and refused —
+        // the very first 402 (no payload yet) is an ordinary demand, never a refusal.
+        var error = alwaysPaywall && recorded.Payload is not null ? rejectionReason : null;
         var response = new HttpResponseMessage(HttpStatusCode.PaymentRequired);
-        response.Headers.Add(X402Headers.PaymentRequired, X402Codec.Encode(BuildDemand(assets)));
+        response.Headers.Add(X402Headers.PaymentRequired, X402Codec.Encode(BuildDemand(assets, error)));
         return Task.FromResult(response);
     }
 
@@ -161,8 +169,9 @@ public sealed class PayingClientHarness : IDisposable
         return response;
     }
 
-    private static PaymentRequired BuildDemand(IReadOnlyList<AssetDescriptor> assets) => new()
+    private static PaymentRequired BuildDemand(IReadOnlyList<AssetDescriptor> assets, string? error = null) => new()
     {
+        Error = error,
         Resource = new ResourceInfo { Url = ResourceUrl },
         Accepts = [.. assets.Select(BuildRequirements)],
     };

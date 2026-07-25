@@ -167,13 +167,35 @@ public sealed class X402PaymentHandler : DelegatingHandler
 
             replayResponse = await base.SendAsync(replay, cancellationToken).ConfigureAwait(false);
 
-            // 9. A second 402 means the payment was refused; do not loop.
+            // 9. A second 402 means the payment was refused; do not loop. The second PAYMENT-REQUIRED
+            // is decoded here — before disposal, the same way the first one was at step 3 — so the
+            // server's actual reason (an insufficient balance, an unsupported asset, an expired
+            // authorization, and so on) reaches the caller instead of being thrown away: an agent
+            // paying a third-party API has no way to read that server's own logs.
             if (replayResponse.StatusCode == HttpStatusCode.PaymentRequired)
             {
+                var rejectionHeader = replayResponse.Headers
+                    .TryGetValues(X402Headers.PaymentRequired, out var rejectionValues)
+                        ? rejectionValues.FirstOrDefault()
+                        : null;
                 replayResponse.Dispose();
-                throw new PaymentRejectedException(
+
+                var decodedRejection = X402Codec.TryDecode<PaymentRequired>(
+                    rejectionHeader, out var rejection, out _)
+                        ? rejection
+                        : null;
+
+                var reasonClause = decodedRejection?.Error is { Length: > 0 } reason
+                    ? $": {reason}"
+                    : " (the server gave no reason)";
+
+                var message =
                     $"The server demanded payment again for '{required.Resource.Url}' after this " +
-                    "client paid for it. Refusing to retry a second time.");
+                    $"client paid for it{reasonClause}. Refusing to retry a second time.";
+
+                throw decodedRejection is not null
+                    ? new PaymentRejectedException(message, decodedRejection)
+                    : new PaymentRejectedException(message);
             }
         }
         catch
