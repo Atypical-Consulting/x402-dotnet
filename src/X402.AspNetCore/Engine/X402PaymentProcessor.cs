@@ -222,12 +222,16 @@ internal sealed class X402PaymentProcessor(
             // attempted and failed, so falling through to SettleAsync below would settle — and
             // charge — a second time for the same authorization.
             buffering.Discard();
-            // Not Headers.Clear(): unlike the refusal path, nothing has been written to the
-            // response's headers here (this branch is reached before SettleAsync ever runs, so no
-            // PAYMENT-RESPONSE exists yet to protect) — but the endpoint may already have set
-            // Content-Length for the body it never got to finish writing. Left as-is, that stale
-            // value survives onto the 2-byte {} PaymentRequiredResult writes below and a real
-            // transport (Kestrel, unlike TestServer) aborts the response trying to satisfy it.
+            // Not Headers.Clear(): SettleAsync is the buffer's own overflow hook (OpenBuffering
+            // wires it as onOverflowAsync), so reaching this branch means it already ran at the cap
+            // and returned false — and unless it caught a FacilitatorException it set
+            // PAYMENT-RESPONSE on the way, the payer's only evidence of what settlement reported.
+            // Same reason as the settlement-failed branch below; unlike the refusal path, where no
+            // settlement is possible at all and clearing is safe. What does need resetting is
+            // Content-Length: the endpoint may already have set it for the body it never got to
+            // finish writing, and left as-is that stale value survives onto the 2-byte {}
+            // PaymentRequiredResult writes below, where a real transport (Kestrel, unlike
+            // TestServer) aborts the response trying to satisfy it.
             context.Response.ContentLength = null;
             await new PaymentRequiredResult(attempt.Demand!).ExecuteAsync(context);
             return;
