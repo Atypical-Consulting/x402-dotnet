@@ -10,7 +10,7 @@
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
   </PropertyGroup>
 
-  <!-- Version und InformationalVersion sind pilotées par release-please (tâche 18).
+  <!-- Version et InformationalVersion sont pilotées par release-please (tâche 18).
        Ne pas les éditer à la main, ne pas retirer les marqueurs x-release-please-version. -->
   <PropertyGroup>
     <Version>0.1.0</Version> <!-- x-release-please-version -->
