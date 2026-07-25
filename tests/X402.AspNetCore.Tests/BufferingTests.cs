@@ -95,4 +95,22 @@ public sealed class BufferingTests
         var second = await server.SendAsync("/premium", payload);
         second.StatusCode.ShouldBe(HttpStatusCode.OK);
     }
+
+    [Fact]
+    public async Task An_endpoint_that_throws_is_seen_by_the_hosts_own_error_handling()
+    {
+        // PaidServerFixture's own outer middleware stands in for a real app's own
+        // UseExceptionHandler/logging (see its remarks): LastServerError only ever gets set by
+        // that middleware catching a genuine exception propagating out of the whole pipeline. If
+        // X402Middleware swallowed /boom's InvalidOperationException instead of rethrowing it —
+        // as it used to — this middleware would never see it, and LastServerError would stay empty
+        // even though the response is still a 500.
+        await using var server = await PaidServerFixture.StartAsync();
+        var payload = await server.SignFor("/boom", KnownAssets.EurcBaseSepolia);
+
+        var response = await server.SendAsync("/boom", payload);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.InternalServerError);
+        server.LastServerError.ShouldBe("boom");
+    }
 }

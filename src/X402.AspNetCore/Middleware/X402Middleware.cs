@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
 using X402.AspNetCore.Engine;
 using X402.AspNetCore.Idempotency;
 
@@ -19,11 +20,12 @@ namespace X402.AspNetCore.Middleware;
 /// <see cref="PaymentAttempt.ConflictReason"/> before <see cref="PaymentAttempt.Result"/> is
 /// dereferenced.
 /// </remarks>
-internal sealed class X402Middleware(
+internal sealed partial class X402Middleware(
     RequestDelegate next,
     X402PaymentProcessor processor,
     ISettlementLedger ledger,
-    IReadOnlyList<X402Route> routes)
+    IReadOnlyList<X402Route> routes,
+    ILogger<X402Middleware> logger)
 {
     /// <summary>Runs the middleware for one request.</summary>
     public async Task InvokeAsync(HttpContext context)
@@ -78,7 +80,7 @@ internal sealed class X402Middleware(
             await new PaymentRequiredResult(feature.Attempt!.Demand!).ExecuteAsync(context);
             return;
         }
-        catch (Exception) when (feature.Attempt is not null)
+        catch (Exception exception) when (feature.Attempt is not null)
         {
             // Only handled when a payment was actually open for this request — otherwise the
             // filter is false and the exception propagates untouched, exactly as it would without
@@ -91,19 +93,28 @@ internal sealed class X402Middleware(
             // it refuses to erase a completed entry — but that is a backstop, not a licence to call
             // it when the correct answer is already known here.
             var buffering = feature.Buffer!;
+            var identity = feature.Attempt.Identity;
             if (!buffering.Overflowed && !buffering.Poisoned)
             {
-                await ledger.AbandonAsync(feature.Attempt.Identity, context.RequestAborted);
+                await ledger.AbandonAsync(identity, context.RequestAborted);
+                EndpointThrewAuthorizationAbandoned(
+                    logger, exception, identity.Network, identity.Asset, identity.Nonce);
+            }
+            else
+            {
+                EndpointThrewAfterSettlement(
+                    logger, exception, identity.Network, identity.Asset, identity.Nonce);
             }
 
+            // Discard() and restoring the original response body feature both guarantee nothing was
+            // delivered; buffering also guarantees the response never started. Rethrowing is
+            // therefore safe, and necessary: swallowing the exception here — as this handler used
+            // to — hides it from UseExceptionHandler, the developer exception page, and any logging
+            // middleware the host configured, leaving an operator debugging their own endpoint with
+            // a bare 500 and no stack trace anywhere in the process.
             buffering.Discard();
             RestoreOriginalBody(context, feature);
-            if (!context.Response.HasStarted)
-            {
-                context.Response.StatusCode = StatusCodes.Status500InternalServerError;
-            }
-
-            return;
+            throw;
         }
         finally
         {
@@ -165,4 +176,17 @@ internal sealed class X402Middleware(
                 "X402.AspNetCore; please report it.");
         }
     }
+
+    [LoggerMessage(EventId = 4040, Level = LogLevel.Error,
+        Message = "x402 payment for {Network}/{Asset}/{Nonce} abandoned: the endpoint threw before " +
+                  "settlement. Rethrowing so the host's own error handling sees it.")]
+    private static partial void EndpointThrewAuthorizationAbandoned(
+        ILogger logger, Exception exception, string network, string asset, string nonce);
+
+    [LoggerMessage(EventId = 4041, Level = LogLevel.Error,
+        Message = "x402 payment for {Network}/{Asset}/{Nonce} was already settled or poisoned when " +
+                  "the endpoint threw; not abandoned. Rethrowing so the host's own error handling " +
+                  "sees it.")]
+    private static partial void EndpointThrewAfterSettlement(
+        ILogger logger, Exception exception, string network, string asset, string nonce);
 }
