@@ -163,7 +163,17 @@ services.AddHttpClient("PaidApi", c => c.BaseAddress = new Uri("http://localhost
 
 var http = services.BuildServiceProvider()
     .GetRequiredService<IHttpClientFactory>().CreateClient("PaidApi");
-var response = await http.GetAsync("/weather"); // 402 -> sign -> replay -> 200, handled for you
+
+try
+{
+    var response = await http.GetAsync("/weather"); // 402 -> sign -> replay -> 200, if the wallet can pay
+}
+catch (PaymentRejectedException)
+{
+    // Expected here with a fresh, unfunded wallet — the facilitator refuses settlement. Step 4
+    // above is where a reader actually watching this succeed should start; see
+    // samples/README.md#running-fully-offline for the real, unedited output.
+}
 ```
 
 The two runnable projects this is distilled from — `samples/PaidApi` and `samples/PayingAgent` —
