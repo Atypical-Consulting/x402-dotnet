@@ -58,7 +58,11 @@ public sealed class X402CodecTests
     [InlineData("eyJmb28iOiJiYXIifQ==")]        // JSON valide, mais pas la bonne forme
     public void TryDecode_never_throws_on_hostile_input(string? header)
     {
-        // Ces valeurs viennent du réseau. Une exception ici serait un vecteur de déni de service.
+        // Ces valeurs viennent du réseau, mais TryDecode les couvre déjà toutes par construction
+        // (base64 invalide, JSON invalide, forme inattendue). Une exception qui s'échapperait ici
+        // serait une régression de son propre traitement d'erreur — une faute de développement à
+        // corriger dans TryDecode, pas un vecteur de déni de service : atteindre ce chemin exige de
+        // casser le code, pas d'envoyer une requête particulière.
         var ok = X402Codec.TryDecode<PaymentRequired>(header, out var value, out var error);
 
         ok.ShouldBeFalse();
