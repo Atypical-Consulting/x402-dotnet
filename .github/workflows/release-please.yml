@@ -1,0 +1,89 @@
+name: release-please
+
+# Derives the next semantic version from Conventional Commits on every push to main and keeps a
+# release PR up to date (bumping the Directory.Build.props version shared by X402.Core,
+# X402.AspNetCore and X402.Client via the x-release-please-version markers, plus CHANGELOG.md).
+# Merging that PR tags vX.Y.Z and publishes the GitHub Release.
+#
+# The publish job below runs in THIS SAME workflow run, gated on `release_created`, rather than
+# relying solely on ci.yml's own tag-triggered publish/release jobs: a tag pushed by
+# release-please-action using the default GITHUB_TOKEN does not itself fire `on: push: tags` in
+# another workflow — GitHub suppresses workflow runs recursively triggered by the default token,
+# to prevent infinite loops. See
+# https://docs.github.com/en/actions/security-guides/automatic-token-authentication#using-the-github_token-in-a-workflow
+# ci.yml's tag-triggered jobs are kept as the path for a manually pushed v* tag (e.g. a hotfix);
+# both are safe to run for the same tag since both the NuGet push (--skip-duplicate) and the
+# release-asset upload (--clobber) are idempotent.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+# Serialize release-please runs so two overlapping pushes to main can't race on the release PR.
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@v5
+        id: release
+        with:
+          target-branch: main
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  # Packs and publishes the three packages for the release just created above. Guarded on the
+  # NUGET_API_KEY secret being set (job-level env, read from a step-level `if`, since a step's own
+  # `if` cannot see its own step-level env) so this stays a clean no-op until a maintainer adds it
+  # — see the "verify rather than assume" note in task 18's report: the secret does not exist yet.
+  publish:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write # attach the .nupkg files to the release created above
+    env:
+      NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Pack
+        run: dotnet pack --no-build --configuration Release --output ./nupkg
+
+      - name: Push to NuGet.org
+        if: ${{ env.NUGET_API_KEY != '' }}
+        run: |
+          dotnet nuget push "./nupkg/*.nupkg" \
+            --api-key "$NUGET_API_KEY" \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
+
+      - name: Attach packages to the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ needs.release-please.outputs.tag_name }}" ./nupkg/*.nupkg --clobber
