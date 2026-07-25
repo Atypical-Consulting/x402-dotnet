@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <!-- A sample, not a library: no public API surface for CS1591 to police. Comments below
+         explain what a reader needs, not what a NuGet consumer's IntelliSense needs. -->
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\X402.AspNetCore\X402.AspNetCore.csproj" />
+    <!-- Only exercised when UseFakeFacilitator=true (see Program.cs): an in-process facilitator
+         so the whole demo settles for real with no testnet wallet. See samples/README.md. -->
+    <ProjectReference Include="..\..\tests\X402.TestKit\X402.TestKit.csproj" />
+  </ItemGroup>
+
+</Project>
