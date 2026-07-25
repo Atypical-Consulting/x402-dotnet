@@ -200,12 +200,25 @@ internal sealed partial class X402Middleware(
     /// taken.
     /// </summary>
     /// <remarks>
+    /// <see cref="BufferingResponseBodyFeature.Poisoned"/> is consulted first, in straight-line code,
+    /// exactly as <see cref="X402PaymentProcessor.FinishAsync"/> consults it for an accepted attempt —
+    /// before <c>StatusCode</c> is inspected at all. An endpoint that ignores <c>CanContinue</c> can
+    /// also write past <c>MaxBufferedResponseBytes</c> inside its own broad catch (a common streaming
+    /// pattern) and swallow the resulting <see cref="BufferingSettlementFailedException"/>; that catch
+    /// commonly sets some non-2xx status — a 503, say — before returning normally. Checking
+    /// <c>StatusCode</c> first would route that case into <see cref="BufferingResponseBodyFeature.FlushBufferAsync"/>,
+    /// which finds the buffer already discarded (settlement can never succeed for a refusal — see
+    /// <see cref="X402PaymentProcessor.OpenRefusalBuffering"/> — so any overflow poisons it
+    /// unconditionally) and returns silently: the client would get that status with an empty body and
+    /// nothing logged anywhere, the same shape of silent failure this pipeline exists to rule out.
+    /// <para>
     /// A well-behaved endpoint returned <c>PaymentGateResult.Result</c> unchanged: its status is
     /// never 2xx, so what it wrote — normally the 402/409 body itself — is simply released. An
     /// endpoint that ignored <c>CanContinue</c> and wrote a success response anyway never gets to
     /// keep it: the buffered bytes are discarded and replaced with the refusal that should have been
     /// returned, and the substitution is logged at <c>LogLevel.Error</c> — an endpoint bug that would
     /// have served paid content for free must never be silent, even though this pipeline caught it.
+    /// </para>
     /// </remarks>
     private async Task FinishRefusalAsync(HttpContext context, X402RequestFeature feature)
     {
@@ -213,6 +226,18 @@ internal sealed partial class X402Middleware(
         {
             // Nothing priced this request through the gate at all: no route matched, and the
             // endpoint never called IX402PaymentGate.RequireAsync either.
+            return;
+        }
+
+        if (buffering.Poisoned)
+        {
+            RefusalIgnoredAndBufferOverran(
+                logger, context.Request.Path.Value ?? "", context.Response.StatusCode,
+                refusal.FailureReason ?? "");
+
+            buffering.Discard();
+            context.Response.Headers.Clear();
+            await WriteRefusalAsync(context, refusal);
             return;
         }
 
@@ -249,5 +274,13 @@ internal sealed partial class X402Middleware(
                   "payment ({Reason}) — the endpoint ignored PaymentGateResult.CanContinue and " +
                   "served paid content for free. Withholding the response where still possible.")]
     private static partial void RefusalIgnored(
+        ILogger logger, string path, int statusCode, string reason);
+
+    [LoggerMessage(EventId = 4043, Level = LogLevel.Error,
+        Message = "x402: {Path} returned {StatusCode} after IX402PaymentGate.RequireAsync refused " +
+                  "payment ({Reason}) — the endpoint ignored PaymentGateResult.CanContinue AND wrote " +
+                  "past the buffered response cap, swallowing the resulting exception. Nothing " +
+                  "reached the client; discarding what was buffered and returning the refusal instead.")]
+    private static partial void RefusalIgnoredAndBufferOverran(
         ILogger logger, string path, int statusCode, string reason);
 }

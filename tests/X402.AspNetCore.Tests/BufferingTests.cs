@@ -70,6 +70,36 @@ public sealed class BufferingTests
     }
 
     [Fact]
+    public async Task An_ignored_refusal_that_also_overflows_the_buffer_still_gets_a_clean_refusal()
+    {
+        // /analyze-ignoring-refusal-overflowing stacks two independent endpoint bugs: it ignores
+        // PaymentGateResult.CanContinue (like PaymentGateTests's ignored-refusal case), then writes
+        // past MaxBufferedResponseBytes inside its own broad catch, which also sets a non-2xx status
+        // (503) before returning normally — the exact shape that requires
+        // X402Middleware.FinishRefusalAsync to consult BufferingResponseBodyFeature.Poisoned before
+        // StatusCode: without it, this request would come back as a bare 503 with an empty body and
+        // nothing logged (FlushBufferAsync finding the buffer already discarded and returning
+        // silently).
+        await using var server = await PaidServerFixture.StartAsync(
+            configure: options => options.MaxBufferedResponseBytes = 1024);
+
+        var response = await server.Client.GetAsync(
+            "/analyze-ignoring-refusal-overflowing", TestContext.Current.CancellationToken);
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        // Withheld and rewritten as the refusal that should have been returned, not the endpoint's
+        // own 503 with an empty body.
+        response.StatusCode.ShouldBe(HttpStatusCode.PaymentRequired);
+        response.Headers.Contains(X402Headers.PaymentRequired).ShouldBeTrue();
+        body.ShouldNotBeEmpty();
+
+        // And it must never be a SILENT failure: both endpoint bugs are named in the log.
+        server.LoggedErrors.ShouldContain(
+            message => message.Contains("ignored PaymentGateResult.CanContinue")
+                && message.Contains("wrote past the buffered response cap"));
+    }
+
+    [Fact]
     public async Task A_free_route_is_never_buffered()
     {
         await using var server = await PaidServerFixture.StartAsync();

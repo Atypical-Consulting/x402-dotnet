@@ -33,9 +33,11 @@ namespace X402.AspNetCore.Tests;
 /// Routes mounted by default, when <c>routes</c> is not supplied to <see cref="StartAsync"/>:
 /// <c>/free</c> (unpriced), <c>/premium</c> and <c>/boom</c> (EURC 0.010 then USDC 0.011),
 /// <c>/large</c> (same prices, streams 64 KiB), <c>/large-swallowing</c> (same as
-/// <c>/large</c>, but swallows whatever each write throws), and
+/// <c>/large</c>, but swallows whatever each write throws),
 /// <c>/analyze-ignoring-refusal</c> (deliberately buggy: ignores a gate refusal and serves content
-/// anyway, for <c>PaymentGateTests</c>). Supplying <c>routes</c> replaces this default set
+/// anyway, for <c>PaymentGateTests</c>), and <c>/analyze-ignoring-refusal-overflowing</c>
+/// (ignores a gate refusal AND overflows the buffer in a swallowed broad catch, for
+/// <c>BufferingTests</c>). Supplying <c>routes</c> replaces this default set
 /// entirely, for tests that need their own route table (see <c>RouteMappingTests</c>). Any path
 /// not otherwise mapped answers 200 OK, so a route declared but never paid for still has
 /// something to reach.
@@ -224,6 +226,9 @@ public sealed class PaidServerFixture : IAsyncDisposable
                         endpoints.MapPost("/analyze", AnalyzeAsync);
                         endpoints.MapPost("/by-size", BySizeAsync);
                         endpoints.MapGet("/analyze-ignoring-refusal", IgnoringRefusalAsync);
+                        endpoints.MapGet(
+                            "/analyze-ignoring-refusal-overflowing",
+                            IgnoringRefusalAndOverflowingBufferAsync);
 
                         // A test that declares its own route table (see RouteMappingTests) can
                         // reach paths never mapped above; anything unmatched still needs to answer
@@ -431,6 +436,36 @@ public sealed class PaidServerFixture : IAsyncDisposable
 
         await context.Response.WriteAsync(
             "content that was never paid for", context.RequestAborted);
+    }
+
+    /// <summary>
+    /// Deliberately buggy in two independent ways at once: like <see cref="IgnoringRefusalAsync"/>,
+    /// it discards <c>PaymentGateResult.CanContinue</c> — but it then also writes past
+    /// <c>MaxBufferedResponseBytes</c> inside its own broad catch (the same tolerate-a-disconnect
+    /// pattern as <see cref="WriteLargeBodySwallowingExceptionsAsync"/>), and that catch sets a
+    /// non-2xx status before returning normally. Settlement can never succeed for a refusal (see
+    /// <see cref="X402PaymentProcessor.OpenRefusalBuffering"/>), so the cap-crossing write always
+    /// poisons the buffer here. Exercises the guard against exactly this combination going silent —
+    /// see the Poisoned check in <see cref="X402Middleware.FinishRefusalAsync"/>.
+    /// </summary>
+    private static async Task IgnoringRefusalAndOverflowingBufferAsync(HttpContext context, IX402PaymentGate gate)
+    {
+        _ = await gate.RequireAsync(
+            DynamicPricing.ForTokens(1), cancellationToken: context.RequestAborted);
+
+        var chunk = new byte[4096];
+        Array.Fill(chunk, (byte)'x');
+        try
+        {
+            for (var i = 0; i < 16; i++)
+            {
+                await context.Response.Body.WriteAsync(chunk, context.RequestAborted);
+            }
+        }
+        catch (Exception)
+        {
+            context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+        }
     }
 
     private sealed class RequestCounter
