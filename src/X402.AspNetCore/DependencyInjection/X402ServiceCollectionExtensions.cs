@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using X402.AspNetCore.Configuration;
+using X402.AspNetCore.Engine;
 using X402.AspNetCore.Facilitator;
 using X402.AspNetCore.Idempotency;
 using X402.Billing;
@@ -64,6 +65,9 @@ public static class X402ServiceCollectionExtensions
         services.TryAddSingleton<IPaymentEventSink, LoggerPaymentEventSink>();
         services.TryAddSingleton<ISettlementLedger>(provider => new InMemorySettlementLedger(
             logger: provider.GetRequiredService<ILogger<InMemorySettlementLedger>>()));
+
+        services.TryAddSingleton(TimeProvider.System);
+        services.TryAddSingleton<X402PaymentProcessor>();
 
         AddFacilitatorClients(services);
 
