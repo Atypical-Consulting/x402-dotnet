@@ -9,9 +9,15 @@ namespace X402.AspNetCore.Idempotency;
 /// The default ledger: a concurrent dictionary with time-bounded entries.
 /// </summary>
 /// <remarks>
-/// Entries live for the authorization's own validity window plus a margin. Past that point the
-/// authorization is refused on-chain anyway, so keeping the entry would bound nothing and grow
-/// memory without end.
+/// Two separate durations govern entry lifetime, and neither tracks the authorization's own
+/// on-chain validity window. <c>retention</c> is how long a completed settlement is remembered, so
+/// that an authorization presented again gets the memorised response instead of settling a second
+/// time. <c>leaseTimeout</c> is how long an acquired-but-not-yet-completed authorization is
+/// tolerated before it is assumed abandoned and reclaimed — a leak backstop for a caller that
+/// crashes between acquiring and completing, not a bound on how long settlement itself may take.
+/// Conflating the two is exactly the assumption that once let a slow settlement's still-live lease
+/// be pruned as if it were an expired completed record; see <see cref="ISettlementLedger.AcquireAsync"/>
+/// and <see cref="ISettlementLedger.CompleteAsync"/> for what that costs when it happens anyway.
 /// </remarks>
 public sealed partial class InMemorySettlementLedger : ISettlementLedger
 {
@@ -112,6 +118,17 @@ public sealed partial class InMemorySettlementLedger : ISettlementLedger
             {
                 // Duplicate completion, same outcome (e.g. a retried settle that reached the
                 // facilitator twice): harmless, nothing left to record.
+                //
+                // Known gap: SettleResponse's record-generated Equals is structural for every field
+                // except Extensions (IReadOnlyDictionary<string, ProtocolExtension>?), which
+                // EqualityComparer<T>.Default compares by reference, not content. Two separately
+                // deserialised responses carrying identical extension data therefore compare unequal
+                // whenever Extensions is populated, and fall through to the conflicting-outcome branch
+                // below. The consequence is a spurious warning, not incorrect state: that branch keeps
+                // the first response either way, so no settlement is lost or duplicated. No facilitator
+                // in this codebase populates Extensions yet, which is why this hasn't surfaced. A
+                // structural comparer would close it but is a real change, not a doc fix — left for a
+                // future task.
                 return ValueTask.CompletedTask;
             }
 
