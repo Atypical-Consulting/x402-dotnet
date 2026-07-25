@@ -133,6 +133,8 @@ public sealed class X402PaymentHandler : DelegatingHandler
         }
 
         var (requirement, asset, amount) = chosen.Value;
+        HttpRequestMessage replay;
+        HttpResponseMessage replayResponse;
         try
         {
             // 7. Build the authorization. validAfter sits 60s in the past so a payer's clock
@@ -160,10 +162,10 @@ public sealed class X402PaymentHandler : DelegatingHandler
                 Payload = JsonSerializer.SerializeToElement(exact, X402Json.Options),
             };
 
-            var replay = Clone(request);
+            replay = Clone(request);
             replay.Headers.Add(X402Headers.PaymentSignature, X402Codec.Encode(paymentPayload));
 
-            var replayResponse = await base.SendAsync(replay, cancellationToken).ConfigureAwait(false);
+            replayResponse = await base.SendAsync(replay, cancellationToken).ConfigureAwait(false);
 
             // 9. A second 402 means the payment was refused; do not loop.
             if (replayResponse.StatusCode == HttpStatusCode.PaymentRequired)
@@ -173,25 +175,28 @@ public sealed class X402PaymentHandler : DelegatingHandler
                     $"The server demanded payment again for '{required.Resource.Url}' after this " +
                     "client paid for it. Refusing to retry a second time.");
             }
-
-            // 10. Expose the settlement receipt on the response, via the replay request's Options
-            // bag — HttpResponseMessage carries no Options of its own.
-            replayResponse.RequestMessage ??= replay;
-            if (replayResponse.Headers.TryGetValues(X402Headers.PaymentResponse, out var receiptValues) &&
-                X402Codec.TryDecode<SettleResponse>(receiptValues.FirstOrDefault(), out var receipt, out _))
-            {
-                replayResponse.RequestMessage.Options.Set(HttpResponseMessageExtensions.ReceiptKey, receipt!);
-            }
-
-            return replayResponse;
         }
         catch
         {
             // The reservation made at step 6 must not outlive a payment that never completed —
             // otherwise a rejected or failed payment would permanently consume session budget.
+            // Scoped to end here, not around receipt exposure below: by the time this try block
+            // exits normally, the replay is known to have succeeded, and nothing past this point
+            // should ever release a reservation for a payment that actually settled.
             spendTracker.Release(asset, amount);
             throw;
         }
+
+        // 10. Expose the settlement receipt on the response, via the replay request's Options bag
+        // — HttpResponseMessage carries no Options of its own.
+        replayResponse.RequestMessage ??= replay;
+        if (replayResponse.Headers.TryGetValues(X402Headers.PaymentResponse, out var receiptValues) &&
+            X402Codec.TryDecode<SettleResponse>(receiptValues.FirstOrDefault(), out var receipt, out _))
+        {
+            replayResponse.RequestMessage.Options.Set(HttpResponseMessageExtensions.ReceiptKey, receipt!);
+        }
+
+        return replayResponse;
     }
 
     /// <summary>

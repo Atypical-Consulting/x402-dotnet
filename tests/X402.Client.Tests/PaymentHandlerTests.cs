@@ -78,6 +78,7 @@ public sealed class PaymentHandlerTests
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         harness.PaidAsset.ShouldBe(KnownAssets.UsdcBaseSepolia.Address);
+        harness.SignatureCount.ShouldBe(1); // EURC était rejeté avant toute signature, jamais signé
     }
 
     [Fact]
@@ -112,13 +113,37 @@ public sealed class PaymentHandlerTests
     [Fact]
     public async Task A_post_body_is_replayed_intact()
     {
-        // Sans rebufferisation, le rejeu partirait avec un corps vide — le bug le plus
-        // courant de ce genre de handler.
+        // Sans rebufferisation, le rejeu partirait avec un corps vide — le bug le plus courant de
+        // ce genre de handler. Le contenu est un StreamContent sur un flux non-recherchable à
+        // lecture unique, pas un JsonContent : ce dernier se re-sérialise depuis l'objet à chaque
+        // envoi et rejouerait correctement même sans aucune bufferisation, ce qui ne prouverait
+        // rien sur le handler.
+        using var harness = PayingClientHarness.CreatePaywall(KnownAssets.EurcBaseSepolia);
+        using var request = new HttpRequestMessage(HttpMethod.Post, "https://api.test/premium")
+        {
+            Content = new StreamContent(new SingleReadStream("latest market data"u8.ToArray())),
+        };
+
+        await harness.Client.SendAsync(request, TestContext.Current.CancellationToken);
+
+        harness.LastRequestBody.ShouldContain("latest market data");
+        harness.RequestBodies.Count.ShouldBe(2);
+        harness.RequestBodies[0].ShouldBe(harness.RequestBodies[1]);
+    }
+
+    [Fact]
+    public async Task Posting_via_the_common_JsonContent_convenience_path_also_succeeds()
+    {
+        // Documente que le chemin courant (PostAsJsonAsync) fonctionne de bout en bout. Ce test ne
+        // prouve rien sur la bufferisation elle-même : JsonContent se re-sérialise depuis l'objet
+        // à chaque envoi, donc il rejouerait correctement même si le handler ne bufferisait rien —
+        // voir A_post_body_is_replayed_intact pour le test qui exerce réellement l'étape 1.
         using var harness = PayingClientHarness.CreatePaywall(KnownAssets.EurcBaseSepolia);
 
-        await harness.Client.PostAsJsonAsync("https://api.test/premium",
+        var response = await harness.Client.PostAsJsonAsync("https://api.test/premium",
             new { Query = "latest market data" }, TestContext.Current.CancellationToken);
 
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
         harness.LastRequestBody.ShouldContain("latest market data");
         harness.RequestBodies.Count.ShouldBe(2);
         harness.RequestBodies[0].ShouldBe(harness.RequestBodies[1]);

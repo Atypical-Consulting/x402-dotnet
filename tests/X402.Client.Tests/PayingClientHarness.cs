@@ -1,5 +1,6 @@
 using System.Net;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using X402.Assets;
 using X402.Client.Signing;
@@ -208,9 +209,7 @@ internal sealed class RecordingHandler(Func<HttpRequestMessage, RecordedRequest,
     protected override async Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request, CancellationToken cancellationToken)
     {
-        var body = request.Content is null
-            ? string.Empty
-            : await request.Content.ReadAsStringAsync(cancellationToken);
+        var body = await ReadBodyAsync(request.Content, cancellationToken);
 
         var paymentHeader = request.Headers.TryGetValues(X402Headers.PaymentSignature, out var values)
             ? values.FirstOrDefault()
@@ -227,6 +226,28 @@ internal sealed class RecordingHandler(Func<HttpRequestMessage, RecordedRequest,
         requests.Add(recorded);
 
         return await respond(request, recorded);
+    }
+
+    /// <summary>
+    /// Reads a request's body without masking whether it was actually replayable.
+    /// <see cref="HttpContent.ReadAsStringAsync(CancellationToken)"/> buffers its content as a side
+    /// effect — internally, it is implemented on top of <c>LoadIntoBufferAsync</c> — which would
+    /// silently make even an unbuffered, single-read stream appear replayable on a second capture,
+    /// masking the exact defect <c>A_post_body_is_replayed_intact</c> exists to catch.
+    /// <see cref="HttpContent.CopyToAsync(Stream, CancellationToken)"/> has no such side effect: on
+    /// content nobody has buffered, it drains the underlying source exactly once, so capturing the
+    /// body this way tells the truth about what the wire actually saw.
+    /// </summary>
+    private static async Task<string> ReadBodyAsync(HttpContent? content, CancellationToken cancellationToken)
+    {
+        if (content is null)
+        {
+            return string.Empty;
+        }
+
+        using var buffer = new MemoryStream();
+        await content.CopyToAsync(buffer, cancellationToken);
+        return Encoding.UTF8.GetString(buffer.ToArray());
     }
 }
 
@@ -246,4 +267,55 @@ internal sealed class CountingPaymentSigner(IPaymentSigner inner) : IPaymentSign
         Interlocked.Increment(ref count);
         return inner.SignAsync(requirements, authorization, asset, cancellationToken);
     }
+}
+
+/// <summary>
+/// A forward-only, non-seekable stream that can be drained exactly once — like a genuine
+/// network or request-body stream, and unlike a <see cref="MemoryStream"/> or a
+/// <c>JsonContent</c>'s backing object, neither of which would ever expose a buffering defect: a
+/// <see cref="MemoryStream"/> is trivially re-readable, and <c>JsonContent</c> re-serialises its
+/// backing object fresh on every send. Wrapped in a <see cref="StreamContent"/>, a second attempt
+/// to send this content without first buffering it throws
+/// <see cref="InvalidOperationException"/> ("The stream was already consumed"); reading it a
+/// second time never silently produces a correct-but-coincidental body.
+/// </summary>
+internal sealed class SingleReadStream(byte[] data) : Stream
+{
+    private int position;
+
+    public override bool CanRead => true;
+
+    public override bool CanSeek => false;
+
+    public override bool CanWrite => false;
+
+    public override long Length => throw new NotSupportedException();
+
+    public override long Position
+    {
+        get => position;
+        set => throw new NotSupportedException();
+    }
+
+    public override void Flush()
+    {
+    }
+
+    public override int Read(byte[] buffer, int offset, int count)
+    {
+        var remaining = data.Length - position;
+        var toCopy = Math.Min(remaining, count);
+        Array.Copy(data, position, buffer, offset, toCopy);
+        position += toCopy;
+        return toCopy;
+    }
+
+    public override long Seek(long offset, SeekOrigin origin) =>
+        throw new NotSupportedException();
+
+    public override void SetLength(long value) =>
+        throw new NotSupportedException();
+
+    public override void Write(byte[] buffer, int offset, int count) =>
+        throw new NotSupportedException();
 }
