@@ -100,9 +100,17 @@ public sealed class EndToEndTests
     }
 
     [Fact]
-    public async Task A_usdc_only_facilitator_degrades_the_offer_instead_of_breaking_it()
+    public async Task A_facilitator_refusing_an_asset_surfaces_a_clean_non_looping_refusal()
     {
         // §2.1.6 : la bibliothèque supporte l'EURC, le facilitateur choisi peut ne pas le régler.
+        // Ceci ne démontre PAS une dégradation automatique de l'offre vers un actif payable :
+        // IFacilitatorClient.GetSupportedAsync existe mais n'a aucun appelant dans src/ (code
+        // mort à ce jour), donc rien ne consulte les capacités du facilitateur pour adapter les
+        // `accepts` annoncés au client. Adapter l'offre exigerait d'appeler GetSupportedAsync
+        // quelque part dans le pipeline serveur, ce qui n'existe pas. Ce test prouve seulement
+        // que le refus du facilitateur remonte à l'agent comme un refus propre et sans boucle —
+        // le même chemin structurel que le scénario de vérification refusée, atteint par un
+        // autre levier (l'actif plutôt que les fonds).
         await using var fixture = await PaidApiFixture.StartAsync();
         fixture.Facilitator.Scenario = FakeFacilitatorScenario.UnsupportedAsset;
         fixture.Facilitator.SupportedAssets = [KnownAssets.UsdcBaseSepolia.Address];

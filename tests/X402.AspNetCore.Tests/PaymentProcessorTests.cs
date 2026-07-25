@@ -1,4 +1,5 @@
 using System.Net;
+using X402.AspNetCore.Configuration;
 using X402.AspNetCore.Idempotency;
 using X402.Assets;
 using X402.Billing;
@@ -51,10 +52,19 @@ public sealed class PaymentProcessorTests : IAsyncLifetime
 
         foreach (var requirement in demand.Accepts)
         {
+            // Resolved from KnownAssets, not hard-coded: this asserts the EXACT domain the
+            // catalogue declares for this asset, not merely "some non-empty name" — a regression
+            // that emits the wrong domain (e.g. "USDC" where mainnet's own contract requires "USD
+            // Coin") would make the resulting 402 unpayable by any third-party client that reads
+            // `extra`, even though this server, our own client and the fake facilitator never
+            // consult it themselves (see PaymentProcessorTests remarks below).
+            var asset = KnownAssets.ForNetwork(requirement.Network)
+                .Single(a => EvmAddress.AreEqual(a.Address, requirement.Asset));
+
             requirement.Extra.ShouldNotBeNull();
             var extra = requirement.Extra!.Value;
-            extra.GetProperty("name").GetString().ShouldNotBeNullOrEmpty();
-            extra.GetProperty("version").GetString().ShouldBe("2");
+            extra.GetProperty("name").GetString().ShouldBe(asset.Eip712Name);
+            extra.GetProperty("version").GetString().ShouldBe(asset.Eip712Version);
         }
     }
 
