@@ -124,6 +124,14 @@ one atomic unit, 0.000001 EURC or USDC — and reports what actually happened.
 dotnet run --project samples/PayingAgent -- --probe
 ```
 
+By default this probes `https://x402.org/facilitator`. To probe a different facilitator — the one
+you are actually evaluating for your own service — set `X402_FACILITATOR_URL` before running:
+
+```bash
+export X402_FACILITATOR_URL=https://your-candidate-facilitator.example
+dotnet run --project samples/PayingAgent -- --probe
+```
+
 Real output, same unfunded throwaway key as above:
 
 ```
@@ -188,5 +196,6 @@ facilitator, not of this library, and nothing in the x402 wire protocol lets you
 `https://x402.org/facilitator` advertises the `exact` scheme on `eip155:84532` (Base Sepolia) —
 confirmed above — but not on Base mainnet for EVM. Whether it actually settles EURC on the network
 it does advertise is exactly what `--probe` is for. Run it against whichever facilitator you are
-considering before you rely on it in production; do not assume EURC support from this library's
-support for EURC.
+considering before you rely on it in production: this library supporting EURC is not evidence that
+your facilitator will settle EURC — those are two separate facts, and only `--probe` establishes
+the second one.

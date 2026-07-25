@@ -10,7 +10,16 @@ namespace X402.TestKit;
 /// <summary>Builders for valid protocol objects, so tests state only what they are about.</summary>
 public static class TestData
 {
-    /// <summary>A throw-away private key. Holds nothing, on any network, ever.</summary>
+    /// <summary>
+    /// A private key shared across this repository's test suite as a common fixture. It is a
+    /// well-known Ethereum test key, published in more places than this repository, and is
+    /// <b>not</b> guaranteed to be empty — it has held a real balance on Base Sepolia (confirmed
+    /// the hard way: task 17's paying-agent sample settled for real against it on its first run
+    /// against the live facilitator). Use it only against <see cref="FakeFacilitator"/>, which
+    /// never checks an on-chain balance. Never point it at a real facilitator expecting
+    /// settlement to fail for lack of funds, and never read "shared test key" as "unfunded" —
+    /// those are two different claims, and only the first one is true.
+    /// </summary>
     public const string PayerPrivateKey =
         "0x4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318";
 

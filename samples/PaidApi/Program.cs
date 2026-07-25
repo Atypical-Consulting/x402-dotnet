@@ -14,25 +14,10 @@ builder.WebHost.UseUrls("http://localhost:8402");
 // facilitator, for pointing at one you run yourself; see samples/README.md.
 builder.Services.AddX402(builder.Configuration.GetSection("X402"));
 
-// Opt-in, independent of ASPNETCORE_ENVIRONMENT: `UseFakeFacilitator=true dotnet run` swaps the
-// two named facilitator HttpClients for an in-process fake, so every call below settles for real
-// with no testnet wallet at all. Nothing else in this file changes — the fake is wired at the
-// transport, not the pipeline, and X402.AspNetCore never knows the difference.
-if (builder.Configuration.GetValue("UseFakeFacilitator", defaultValue: false))
-{
-    var fake = new FakeFacilitator();
-
-    foreach (var clientName in new[] { "x402-verify", "x402-settle" })
-    {
-        builder.Services.AddHttpClient(clientName, client =>
-        {
-            // FakeFacilitator mounts /verify, /settle and /supported at the root, unlike the real
-            // facilitator's "https://x402.org/facilitator/" from appsettings.json — replace the
-            // base address too, or every call resolves to the wrong path against it.
-            client.BaseAddress = new Uri("https://fake-facilitator.invalid/");
-        }).ConfigurePrimaryHttpMessageHandler(fake.CreateHandler);
-    }
-}
+// Opt-in, offline-only escape hatch — see UseFakeFacilitatorIfRequested below and
+// samples/README.md, "Running fully offline". Teaches nothing about x402 itself, so it is a
+// one-line call here rather than a detour through HttpClient plumbing in the middle of this file.
+UseFakeFacilitatorIfRequested(builder);
 
 var app = builder.Build();
 
@@ -59,6 +44,31 @@ app.MapGet("/weather/detailed", () => Results.Ok(new DetailedWeatherReport(
 app.MapPost("/analyze", AnalyzeAsync);
 
 app.Run();
+
+// Swaps the two named facilitator HttpClients ("x402-verify", "x402-settle") for an in-process
+// fake when UseFakeFacilitator=true — independent of ASPNETCORE_ENVIRONMENT — so every call above
+// settles for real with no testnet wallet at all. Nothing about the pipeline above changes: the
+// fake is wired at the transport, and X402.AspNetCore never knows the difference.
+static void UseFakeFacilitatorIfRequested(WebApplicationBuilder builder)
+{
+    if (!builder.Configuration.GetValue("UseFakeFacilitator", defaultValue: false))
+    {
+        return;
+    }
+
+    var fake = new FakeFacilitator();
+
+    foreach (var clientName in new[] { "x402-verify", "x402-settle" })
+    {
+        builder.Services.AddHttpClient(clientName, client =>
+        {
+            // FakeFacilitator mounts /verify, /settle and /supported at the root, unlike the real
+            // facilitator's "https://x402.org/facilitator/" from appsettings.json — replace the
+            // base address too, or every call resolves to the wrong path against it.
+            client.BaseAddress = new Uri("https://fake-facilitator.invalid/");
+        }).ConfigurePrimaryHttpMessageHandler(fake.CreateHandler);
+    }
+}
 
 // Priced at one atomic unit of EURC/USDC per byte submitted: there is no fixed table entry
 // because the price is not known until the request body is. IX402PaymentGate opens the same
