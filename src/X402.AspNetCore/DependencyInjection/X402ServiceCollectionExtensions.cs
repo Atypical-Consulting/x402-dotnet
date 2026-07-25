@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using X402.AspNetCore.Configuration;
 using X402.AspNetCore.Engine;
 using X402.AspNetCore.Facilitator;
+using X402.AspNetCore.Gate;
 using X402.AspNetCore.Idempotency;
 using X402.Billing;
 using X402.Licensing;
@@ -68,6 +69,11 @@ public static class X402ServiceCollectionExtensions
 
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<X402PaymentProcessor>();
+
+        // The imperative gate needs the current HttpContext outside of a middleware/endpoint
+        // parameter, and is scoped like every other per-request dependency here.
+        services.AddHttpContextAccessor();
+        services.TryAddScoped<IX402PaymentGate, X402PaymentGate>();
 
         AddFacilitatorClients(services);
 

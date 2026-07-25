@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using X402.AspNetCore.Configuration;
@@ -14,8 +15,11 @@ using X402.Transport;
 namespace X402.AspNetCore.Engine;
 
 /// <summary>
-/// The one place a payment is decided. Route pricing and the imperative gate both drive this;
-/// there is deliberately no second implementation of the flow.
+/// The one place a payment is decided, and the one place its outbound half — installing response
+/// buffering, settling, then deciding to deliver or withhold — runs. Route pricing
+/// (<see cref="Middleware.X402Middleware"/>) and the imperative gate
+/// (<c>IX402PaymentGate.RequireAsync</c>) both drive this; there is deliberately no second
+/// implementation of either half of the flow.
 /// </summary>
 internal sealed class X402PaymentProcessor(
     IOptions<X402Options> options,
@@ -144,6 +148,71 @@ internal sealed class X402PaymentProcessor(
             settle.Transaction);
 
         return settle.Success;
+    }
+
+    /// <summary>
+    /// Installs response buffering for an accepted attempt and records it on
+    /// <paramref name="feature"/> — the single place this happens, called both when a route prices
+    /// the request ahead of time (<see cref="Middleware.X402Middleware"/>) and when
+    /// <c>IX402PaymentGate.RequireAsync</c> opens one late, from inside the handler. Whichever side
+    /// called this, <see cref="FinishAsync"/> reads the same <paramref name="feature"/> once the
+    /// handler returns, without needing to know which one it was.
+    /// </summary>
+    internal BufferingResponseBodyFeature OpenBuffering(
+        HttpContext context, X402RequestFeature feature, PaymentAttempt attempt)
+    {
+        var original = context.Features.Get<IHttpResponseBodyFeature>()!;
+        var buffering = new BufferingResponseBodyFeature(
+            original, settings.MaxBufferedResponseBytes, ct => SettleAsync(context, attempt, ct));
+
+        feature.Attempt = attempt;
+        feature.Buffer = buffering;
+        feature.OriginalBody = original;
+        context.Features.Set<IHttpResponseBodyFeature>(buffering);
+
+        return buffering;
+    }
+
+    /// <summary>
+    /// The outbound half of the flow, once the endpoint has returned without throwing: decides
+    /// whether the buffered response may be delivered. Called once per request, from
+    /// <see cref="Middleware.X402Middleware"/>, for an attempt opened either by a route match or by
+    /// the imperative gate — this is the single implementation of that decision, so the two paths
+    /// cannot diverge.
+    /// </summary>
+    internal async Task FinishAsync(
+        HttpContext context, PaymentAttempt attempt, BufferingResponseBodyFeature buffering)
+    {
+        if (buffering.Poisoned)
+        {
+            // BufferingSettlementFailedException was thrown at the cap and swallowed somewhere
+            // inside the handler (a broad catch around writes, tolerating e.g. a client disconnect,
+            // is a common streaming pattern) instead of propagating out to the middleware. Consult
+            // the flag directly rather than trust that every handler propagates it: settlement was
+            // attempted and failed, so falling through to SettleAsync below would settle — and
+            // charge — a second time for the same authorization.
+            buffering.Discard();
+            await new PaymentRequiredResult(attempt.Demand!).ExecuteAsync(context);
+            return;
+        }
+
+        if (buffering.Overflowed)
+        {
+            // Settlement already happened when the cap was crossed.
+            await buffering.CompleteAsync();
+            return;
+        }
+
+        var settled = await SettleAsync(context, attempt, context.RequestAborted);
+        if (settled)
+        {
+            await buffering.FlushBufferAsync(context.RequestAborted);
+            return;
+        }
+
+        // Settlement failed within the cap: the buffered content is discarded, never delivered.
+        buffering.Discard();
+        await new PaymentRequiredResult(attempt.Demand!).ExecuteAsync(context);
     }
 
     private ResourceInfo BuildResourceInfo(HttpContext context, ResourceInfoOverrides? overrides)
