@@ -189,7 +189,12 @@ actual runs. Start there for anything beyond the shape above: [`samples/README.m
   has no key property; there is nothing an operator could misconfigure into custody.
 - **Fails at start-up, not at the first payment** — pricing a route in an asset the server hasn't
   configured throws `InvalidOperationException` from `UseX402` before the host ever accepts a
-  request, not on the first payer's 402.
+  request, not on the first payer's 402. `AddX402Client` validates the same way: a v1 network
+  shorthand in `AllowedNetworks`, no `SetLimits` call at all, or a per-session limit set below its
+  per-request counterpart all fail as soon as something resolves `X402ClientOptions` — well before
+  the first paying request, where all three used to surface instead. A missing `IPaymentSigner`
+  registration is the one thing left to the container, by necessity (see `AddX402Client`'s own XML
+  docs) — but it now fails with a named, actionable message instead of a generic DI error.
 - **Per-asset spending limits on the client** — `X402ClientOptions` keys limits by network and
   contract address, never by ticker symbol alone or aggregated across currencies, so EURC and USDC
   (and the same symbol on two networks) never share a cap.

@@ -103,4 +103,11 @@ public sealed class X402ClientOptions
         ArgumentNullException.ThrowIfNull(asset);
         return limits.TryGetValue(AssetIdentity.Key(asset), out declared);
     }
+
+    /// <summary>
+    /// Every limit declared so far, keyed by <see cref="AssetIdentity.Key"/> (network plus contract
+    /// address). Internal: only <see cref="X402ClientOptionsValidator"/> needs the whole set at
+    /// once — a public consumer asks <see cref="TryGetLimits"/> for one asset at a time.
+    /// </summary>
+    internal IReadOnlyDictionary<string, (decimal PerRequest, decimal PerSession)> Limits => limits;
 }

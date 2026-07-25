@@ -33,6 +33,20 @@ internal sealed class X402OptionsValidator : IValidateOptions<X402Options>
             failures.Add("X402:ServiceName is longer than the 32 characters the specification allows.");
         }
 
+        if (options.ServiceName is { } serviceName && !IsPrintableAscii(serviceName))
+        {
+            failures.Add(
+                $"X402:ServiceName is '{serviceName}', which is not printable ASCII (0x20-0x7E) as " +
+                "the specification requires. Remove the non-ASCII or control characters.");
+        }
+
+        if (options.IconUrl is { } iconUrl && !IsAbsoluteHttpUrl(iconUrl))
+        {
+            failures.Add(
+                $"X402:IconUrl is '{iconUrl}', which is not an absolute http(s) URL as the " +
+                "specification requires. Use a full URL such as 'https://example.com/icon.png'.");
+        }
+
         if (options.Tags.Count > 5)
         {
             failures.Add("X402:Tags holds more than the 5 entries the specification allows.");
@@ -42,6 +56,19 @@ internal sealed class X402OptionsValidator : IValidateOptions<X402Options>
             ? ValidateOptionsResult.Success
             : ValidateOptionsResult.Fail(failures);
     }
+
+    private static bool IsPrintableAscii(string value) =>
+        value.All(c => c is >= (char)0x20 and <= (char)0x7E);
+
+    /// <summary>
+    /// True only for a well-formed, absolute http or https URL. Plain <c>Uri.TryCreate(value,
+    /// UriKind.Absolute, out _)</c> is not enough: on this platform it also accepts a bare
+    /// filesystem-style path such as <c>/icon.png</c>, silently treating it as a <c>file://</c>
+    /// URI — exactly the kind of relative-looking mistake this check exists to catch.
+    /// </summary>
+    private static bool IsAbsoluteHttpUrl(string value) =>
+        Uri.TryCreate(value, UriKind.Absolute, out var uri) &&
+        (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
 
     private static void ValidatePayee(X402Options options, List<string> failures)
     {

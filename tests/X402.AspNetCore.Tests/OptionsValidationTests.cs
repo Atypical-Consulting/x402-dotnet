@@ -199,6 +199,53 @@ public sealed class OptionsValidationTests
     }
 
     [Fact]
+    public void A_service_name_outside_printable_ascii_fails_at_startup()
+    {
+        // ServiceName is documented as printable ASCII; a name copied from a system that allows
+        // Unicode (an emoji, an accented character) used to ship into every payment demand unchecked.
+        var exception = Should.Throw<OptionsValidationException>(
+            () => Validate(o => o.ServiceName = "Café ☕"));
+
+        exception.Message.ShouldContain("ServiceName");
+        exception.Message.ShouldContain("printable ASCII");
+    }
+
+    [Fact]
+    public void A_printable_ascii_service_name_validates()
+    {
+        Should.NotThrow(() => Validate(o => o.ServiceName = "My Paid API v2 - beta!"));
+    }
+
+    [Fact]
+    public void A_relative_icon_url_fails_at_startup()
+    {
+        // IconUrl is documented as an absolute URL; nothing checked that before. A plain
+        // Uri.TryCreate(value, UriKind.Absolute, out _) is not enough to catch this on its own:
+        // it accepts a bare path like "/icon.png" as a valid absolute file:// URI. The validator
+        // requires an http(s) scheme specifically, which a bare path never has.
+        var exception = Should.Throw<OptionsValidationException>(
+            () => Validate(o => o.IconUrl = "/icon.png"));
+
+        exception.Message.ShouldContain("IconUrl");
+        exception.Message.ShouldContain("absolute");
+    }
+
+    [Fact]
+    public void A_non_http_icon_url_fails_at_startup()
+    {
+        var exception = Should.Throw<OptionsValidationException>(
+            () => Validate(o => o.IconUrl = "ftp://example.com/icon.png"));
+
+        exception.Message.ShouldContain("IconUrl");
+    }
+
+    [Fact]
+    public void An_absolute_icon_url_validates()
+    {
+        Should.NotThrow(() => Validate(o => o.IconUrl = "https://example.com/icon.png"));
+    }
+
+    [Fact]
     public void More_than_five_tags_fails_at_startup()
     {
         var exception = Should.Throw<OptionsValidationException>(() => Validate(o =>
