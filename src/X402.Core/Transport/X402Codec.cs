@@ -95,7 +95,11 @@ public static class X402Codec
         }
         finally
         {
-            ArrayPool<byte>.Shared.Return(buffer);
+            // clearArray: true — the rented buffer holds a decoded payment authorization
+            // (signature, addresses, amounts) at this point. Not a secret key, and this never
+            // leaves the process, but a payments library should not leave decoded payloads
+            // readable by the next tenant of the shared pool.
+            ArrayPool<byte>.Shared.Return(buffer, clearArray: true);
         }
     }
 
