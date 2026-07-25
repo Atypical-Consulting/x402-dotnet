@@ -5,8 +5,18 @@ namespace X402.Licensing;
 /// everything; a commercial package may substitute its own without any change to this library.
 /// </summary>
 /// <remarks>
+/// <para>
 /// Implementations shipped here perform no network call, read no licence file and emit no
 /// telemetry. A test asserts that this assembly references no networking type at all.
+/// </para>
+/// <para>
+/// <b>No code in this library currently calls <see cref="IsEnabled"/>.</b> It is registered in DI
+/// (as <see cref="AllowAllFeatureGate"/> by default) and every feature this library ships,
+/// including <see cref="X402Features.DynamicPricing"/>, runs ungated regardless of what a
+/// substituted implementation returns. This interface exists purely as an extension point for a
+/// future commercial layer to build on — wiring it into the pricing or billing paths themselves is
+/// a deliberate, separate decision, not an oversight, and has not been made yet.
+/// </para>
 /// </remarks>
 public interface IFeatureGate
 {
