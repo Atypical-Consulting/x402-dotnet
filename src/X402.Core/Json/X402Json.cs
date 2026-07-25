@@ -11,7 +11,18 @@ namespace X402.Json;
 public static class X402Json
 {
     /// <summary>Serializer options wired to the source-generated context. Trim- and AOT-safe.</summary>
-    public static JsonSerializerOptions Options { get; } = new(X402JsonContext.Default.Options);
+    public static JsonSerializerOptions Options { get; } = Build();
+
+    private static JsonSerializerOptions Build()
+    {
+        var options = new JsonSerializerOptions(X402JsonContext.Default.Options);
+        // Read-only from construction, not merely after first use: this type's own documentation
+        // says using anything else risks emitting a shape the rest of the ecosystem will not
+        // accept, so a consumer mutating WriteIndented (or anything else) process-wide must fail
+        // immediately and loudly, not silently succeed until the first serialization call.
+        options.MakeReadOnly();
+        return options;
+    }
 }
 
 /// <summary>Source-generated serialisation context for the x402 protocol types.</summary>
