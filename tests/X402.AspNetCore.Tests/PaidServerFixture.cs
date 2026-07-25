@@ -1,17 +1,16 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using X402.AspNetCore.Configuration;
 using X402.AspNetCore.DependencyInjection;
 using X402.AspNetCore.Engine;
 using X402.AspNetCore.Idempotency;
+using X402.AspNetCore.Middleware;
 using X402.Assets;
 using X402.Billing;
 using X402.Networks;
@@ -23,19 +22,19 @@ using X402.Transport;
 namespace X402.AspNetCore.Tests;
 
 /// <summary>
-/// A real x402-accepting server on an in-memory <see cref="TestServer"/>, so
-/// <c>PaymentProcessorTests</c> and <c>BufferingTests</c> verify observable HTTP behavior rather
-/// than internal calls.
+/// A real x402-accepting server on an in-memory <see cref="TestServer"/>, wired through the real
+/// <see cref="X402ApplicationBuilderExtensions.UseX402"/> middleware, so
+/// <c>PaymentProcessorTests</c>, <c>BufferingTests</c> and <c>RouteMappingTests</c> verify
+/// observable HTTP behavior rather than internal calls.
 /// </summary>
 /// <remarks>
-/// <c>UseX402</c> and the route-pricing middleware do not exist yet — they are task 11. Until then
-/// this fixture wires <see cref="X402PaymentProcessor"/> (internal, reached via
-/// <c>InternalsVisibleTo</c>, the same access <see cref="Facilitator.HttpFacilitatorClient"/>
-/// already uses) into a hand-built pipeline that plays the same role
-/// <c>X402Middleware.RunAndSettleAsync</c> will: authorize, buffer, settle, restore the original
-/// response feature. Routes mounted: <c>/free</c> (unpriced), <c>/premium</c> and <c>/boom</c>
-/// (EURC 0.010 then USDC 0.011), <c>/large</c> (same prices, streams 64 KiB), and
-/// <c>/large-swallowing</c> (same as <c>/large</c>, but swallows whatever each write throws).
+/// Routes mounted by default, when <c>routes</c> is not supplied to <see cref="StartAsync"/>:
+/// <c>/free</c> (unpriced), <c>/premium</c> and <c>/boom</c> (EURC 0.010 then USDC 0.011),
+/// <c>/large</c> (same prices, streams 64 KiB), and <c>/large-swallowing</c> (same as
+/// <c>/large</c>, but swallows whatever each write throws). Supplying <c>routes</c> replaces this
+/// default set entirely, for tests that need their own route table (see
+/// <c>RouteMappingTests</c>). Any path not otherwise mapped answers 200 OK, so a route declared
+/// but never paid for still has something to reach.
 /// </remarks>
 public sealed class PaidServerFixture : IAsyncDisposable
 {
@@ -85,8 +84,15 @@ public sealed class PaidServerFixture : IAsyncDisposable
     /// When true, the event sink throws on every <see cref="IPaymentEventSink.RecordAsync"/> call —
     /// exercises the guarantee that billing never fails a payment already settled on-chain.
     /// </param>
+    /// <param name="routes">
+    /// Declares the priced route table via <see cref="X402ApplicationBuilderExtensions.UseX402"/>.
+    /// When omitted, the fixture's own default route table applies (see the type-level remarks);
+    /// when supplied, it replaces that default entirely, so a test can price exactly the routes it
+    /// needs.
+    /// </param>
     public static Task<PaidServerFixture> StartAsync(
-        Action<X402Options>? configure = null, bool sinkThrows = false)
+        Action<X402Options>? configure = null, bool sinkThrows = false,
+        Action<X402RouteBuilder>? routes = null)
     {
         var facilitator = new FakeFacilitator();
         var sink = new RecordingPaymentEventSink(sinkThrows);
@@ -131,21 +137,47 @@ public sealed class PaidServerFixture : IAsyncDisposable
                 })
                 .Configure(app =>
                 {
+                    // Counts, for BufferedRequestCount, every request for which UseX402 installed
+                    // response buffering. The marker X402Middleware leaves on X402RequestFeature
+                    // outlives the request, even once settlement has already run, so it can still
+                    // be read here after the rest of the pipeline has returned.
+                    app.Use(async (context, next) =>
+                    {
+                        await next(context);
+                        if (context.Features.Get<X402RequestFeature>()?.Buffer is not null)
+                        {
+                            bufferedRequests.Increment();
+                        }
+                    });
+
+                    app.UseX402(routeBuilder =>
+                    {
+                        if (routes is not null)
+                        {
+                            routes(routeBuilder);
+                            return;
+                        }
+
+                        routeBuilder
+                            .Map("/premium", premiumPrices)
+                            .Map("/boom", premiumPrices)
+                            .Map("/large", premiumPrices)
+                            .Map("/large-swallowing", premiumPrices);
+                    });
+
                     app.UseRouting();
                     app.UseEndpoints(endpoints =>
                     {
                         endpoints.MapGet("/free", () => Results.Text("free content"));
+                        endpoints.MapGet("/premium", () => Results.Text("premium content"));
+                        endpoints.MapGet("/boom", ThrowBoomAsync);
+                        endpoints.MapGet("/large", WriteLargeBodyAsync);
+                        endpoints.MapGet("/large-swallowing", WriteLargeBodySwallowingExceptionsAsync);
 
-                        MapPriced(endpoints, "/premium", premiumPrices, bufferedRequests,
-                            context => context.Response.WriteAsync("premium content", context.RequestAborted));
-
-                        MapPriced(endpoints, "/boom", premiumPrices, bufferedRequests,
-                            _ => throw new InvalidOperationException("boom"));
-
-                        MapPriced(endpoints, "/large", premiumPrices, bufferedRequests, WriteLargeBodyAsync);
-
-                        MapPriced(endpoints, "/large-swallowing", premiumPrices, bufferedRequests,
-                            WriteLargeBodySwallowingExceptionsAsync);
+                        // A test that declares its own route table (see RouteMappingTests) can
+                        // reach paths never mapped above; anything unmatched still needs to answer
+                        // with something other than a 404 once payment is not the reason it stopped.
+                        endpoints.MapFallback(() => Results.Text("fallback content"));
                     });
                 }))
             .Start();
@@ -262,117 +294,8 @@ public sealed class PaidServerFixture : IAsyncDisposable
         }
     }
 
-    private static void MapPriced(
-        IEndpointRouteBuilder endpoints, string pattern, PriceSet prices, RequestCounter counter,
-        Func<HttpContext, Task> handler) =>
-        endpoints.MapGet(pattern, context => RunPaidAsync(context, prices, handler, counter));
-
-    /// <summary>
-    /// Stands in for <c>X402Middleware.RunAndSettleAsync</c> (task 11): authorize, install
-    /// buffering, run the endpoint, settle, and always restore the original response feature.
-    /// </summary>
-    private static async Task RunPaidAsync(
-        HttpContext context, PriceSet prices, Func<HttpContext, Task> handler, RequestCounter counter)
-    {
-        var processor = context.RequestServices.GetRequiredService<X402PaymentProcessor>();
-        var ledger = context.RequestServices.GetRequiredService<ISettlementLedger>();
-        var options = context.RequestServices.GetRequiredService<IOptions<X402Options>>();
-
-        var attempt = await processor.AuthorizeAsync(context, prices, null, context.RequestAborted);
-
-        if (!attempt.CanContinue)
-        {
-            if (attempt.ConflictReason is { } conflict)
-            {
-                context.Response.StatusCode = StatusCodes.Status409Conflict;
-                await context.Response.WriteAsync(conflict, context.RequestAborted);
-                return;
-            }
-
-            await attempt.Result!.ExecuteAsync(context);
-            return;
-        }
-
-        var original = context.Features.Get<IHttpResponseBodyFeature>()!;
-        var buffering = new BufferingResponseBodyFeature(
-            original, options.Value.MaxBufferedResponseBytes,
-            ct => processor.SettleAsync(context, attempt, ct));
-        counter.Increment();
-        context.Features.Set<IHttpResponseBodyFeature>(buffering);
-
-        try
-        {
-            await handler(context);
-        }
-        catch (BufferingSettlementFailedException)
-        {
-            // Settlement was attempted — and failed — exactly when the buffer crossed the cap,
-            // before anything reached the real network: still refuse cleanly.
-            buffering.Discard();
-            context.Features.Set(original);
-            await new PaymentRequiredResult(attempt.Demand!).ExecuteAsync(context);
-            return;
-        }
-        catch
-        {
-            // Abandon only when settlement provably never happened. It did, and the ledger already
-            // has its outcome on record, when the buffer overflowed successfully (funds moved) or
-            // was poisoned by a failed cap-crossing settlement that this handler's own broad catch
-            // swallowed before it reached us. The ledger tolerates a mistaken Abandon defensively —
-            // it refuses to erase a completed entry — but that is a backstop, not a licence to call
-            // it when the correct answer is already known here.
-            if (!buffering.Overflowed && !buffering.Poisoned)
-            {
-                await ledger.AbandonAsync(attempt.Identity, context.RequestAborted);
-            }
-
-            buffering.Discard();
-            context.Features.Set(original);
-            if (!context.Response.HasStarted)
-            {
-                context.Response.StatusCode = StatusCodes.Status500InternalServerError;
-            }
-
-            return;
-        }
-        finally
-        {
-            // Always restore, whichever path above ran — leaking a buffering feature onto a later
-            // request would be a serious, hard-to-diagnose bug.
-            context.Features.Set(original);
-        }
-
-        if (buffering.Poisoned)
-        {
-            // BufferingSettlementFailedException was thrown at the cap and swallowed somewhere
-            // inside the handler (a broad catch around writes, tolerating e.g. a client disconnect,
-            // is a common streaming pattern) instead of propagating to the catch above. Consult the
-            // flag directly rather than trust that every handler propagates it: settlement was
-            // attempted and failed, so falling through to SettleAsync below would settle — and
-            // charge — a second time for the same authorization.
-            buffering.Discard();
-            await new PaymentRequiredResult(attempt.Demand!).ExecuteAsync(context);
-            return;
-        }
-
-        if (buffering.Overflowed)
-        {
-            // Settlement already happened when the cap was crossed.
-            await buffering.CompleteAsync();
-            return;
-        }
-
-        var settled = await processor.SettleAsync(context, attempt, context.RequestAborted);
-        if (settled)
-        {
-            await buffering.FlushBufferAsync(context.RequestAborted);
-            return;
-        }
-
-        // Settlement failed within the cap: the buffered content is discarded, never delivered.
-        buffering.Discard();
-        await new PaymentRequiredResult(attempt.Demand!).ExecuteAsync(context);
-    }
+    private static Task ThrowBoomAsync(HttpContext _) =>
+        throw new InvalidOperationException("boom");
 
     private sealed class RequestCounter
     {
