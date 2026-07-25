@@ -62,8 +62,8 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      # No-ops until a maintainer sets the NUGET_API_KEY secret (confirmed absent as of task 18 —
-      # see task-18-report.md). Job-level env, read from the step's own `if`: a step-level env is
+      # No-ops until a maintainer sets the NUGET_API_KEY secret (confirmed absent at the time this
+      # workflow was written). Job-level env, read from the step's own `if`: a step-level env is
       # not visible to that same step's `if` conditional.
       - name: Push to NuGet.org
         if: ${{ env.NUGET_API_KEY != '' }}
