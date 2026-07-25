@@ -142,8 +142,11 @@ internal sealed class X402Middleware(
     {
         if (attempt.ConflictReason is { } conflict)
         {
-            context.Response.StatusCode = StatusCodes.Status409Conflict;
-            await context.Response.WriteAsync(conflict, context.RequestAborted);
+            // Checked before Result is dereferenced below: a Conflict attempt leaves Result null.
+            // PaymentConflictResult is the same type IX402PaymentGate.RequireAsync hands a caller
+            // for this outcome (see PaymentGateResult.Result) — one implementation of what a 409
+            // looks like, not two.
+            await new PaymentConflictResult(conflict).ExecuteAsync(context);
             return;
         }
 

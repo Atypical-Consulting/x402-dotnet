@@ -16,7 +16,12 @@ public interface IX402PaymentGate
     /// <param name="prices">One price per accepted asset, computed by the caller for this request.</param>
     /// <param name="options">Per-call overrides for the demand advertised to the payer. Optional.</param>
     /// <param name="cancellationToken">Propagated to authorization against the facilitator.</param>
-    /// <returns>What the gate decided; see <see cref="PaymentGateResult"/>.</returns>
+    /// <returns>
+    /// What the gate decided; see <see cref="PaymentGateResult"/>. Its <c>Result</c> is non-null
+    /// exactly when <c>CanContinue</c> is false, so <c>if (!result.CanContinue) return
+    /// result.Result;</c> is always correct — including when another request is settling the same
+    /// authorization right now.
+    /// </returns>
     /// <exception cref="InvalidOperationException">
     /// Called outside an HTTP request, called without <c>UseX402()</c> in the pipeline, or called
     /// after the response has already started.

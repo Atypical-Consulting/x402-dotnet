@@ -1,6 +1,10 @@
 using System.Net;
 using System.Net.Http.Json;
+using X402.AspNetCore.Configuration;
+using X402.AspNetCore.Idempotency;
 using X402.Assets;
+using X402.Protocol;
+using X402.TestKit;
 using X402.Transport;
 
 namespace X402.AspNetCore.Tests;
@@ -84,6 +88,43 @@ public sealed class PaymentGateTests
         minimal.StatusCode.ShouldBe(HttpStatusCode.PaymentRequired);
         mvc.StatusCode.ShouldBe(HttpStatusCode.PaymentRequired);
         mvc.Headers.Contains(X402Headers.PaymentRequired).ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task A_gate_driven_authorization_being_settled_elsewhere_gets_a_409_with_the_reason()
+    {
+        // No genuine race needed: the ledger is resolvable from the same container the engine
+        // settles through, and the identity AuthorizeAsync computes is deterministic from the
+        // payload. Seed an in-flight lease for it directly, then present the same authorization —
+        // mirrors PaymentProcessorTests.An_authorization_being_settled_elsewhere_gets_409, the
+        // route-driven equivalent of this test.
+        //
+        // This also exercises PaymentGateResult.Result being non-null on a Conflict: /analyze does
+        // `await result.Result!.ExecuteAsync(context)` with no special case for a conflict, so a
+        // null Result here would surface as a 500 (an unhandled NullReferenceException), not a 409.
+        await using var server = await PaidServerFixture.StartAsync();
+
+        var demand = server.DecodeDemand(await server.Client.PostAsJsonAsync(
+            "/analyze", new { Tokens = 100 }, TestContext.Current.CancellationToken));
+        var requirement = demand.Accepts.Single(
+            a => EvmAddress.AreEqual(a.Asset, KnownAssets.EurcBaseSepolia.Address));
+        var payload = await TestData.SignedPayloadAsync(requirement);
+
+        var authorization = payload.AsExactEvm().Authorization;
+        var identity = new PaymentIdentity(
+            payload.Accepted.Network, payload.Accepted.Asset, authorization.Nonce);
+        await server.Ledger.AcquireAsync(identity, TestContext.Current.CancellationToken);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/analyze")
+        {
+            Content = JsonContent.Create(new { Tokens = 100 }),
+        };
+        request.Headers.TryAddWithoutValidation(X402Headers.PaymentSignature, X402Codec.Encode(payload));
+        var response = await server.Client.SendAsync(request, TestContext.Current.CancellationToken);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))
+            .ShouldContain("settl");
     }
 
     [Fact]

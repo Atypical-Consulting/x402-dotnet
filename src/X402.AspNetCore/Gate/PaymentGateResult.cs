@@ -9,23 +9,26 @@ public sealed class PaymentGateResult
     internal PaymentGateResult(PaymentAttempt attempt)
     {
         CanContinue = attempt.CanContinue;
-        Result = attempt.Result;
+        Result = BuildResult(attempt);
         SettledAsset = attempt.SettledAsset;
         Payer = attempt.Payer;
         FailureReason = attempt.FailureReason;
+        ConflictReason = attempt.ConflictReason;
     }
 
     /// <summary>Whether the handler may proceed.</summary>
     public bool CanContinue { get; }
 
     /// <summary>
-    /// The 402 to return when the handler may not proceed. Implements both <c>IResult</c> and
-    /// <c>IActionResult</c>, so the same object works from a minimal endpoint and from an MVC
-    /// controller. Null when the request was refused because another request is settling the same
-    /// authorization right now — the caller should answer 409 instead, using
-    /// <see cref="FailureReason"/>.
+    /// The response to return when the handler may not proceed. Non-null exactly when
+    /// <see cref="CanContinue"/> is false: a <see cref="PaymentRequiredResult"/> (402) for an
+    /// ordinary refusal, or a <see cref="PaymentConflictResult"/> (409) when another request is
+    /// settling the same authorization right now. Both implement <c>IResult</c> and
+    /// <c>IActionResult</c>, so <c>return result.Result;</c> is always correct from a minimal
+    /// endpoint or an MVC controller — a conflict is never a special case the caller has to
+    /// remember.
     /// </summary>
-    public PaymentRequiredResult? Result { get; }
+    public X402HandlerResult? Result { get; }
 
     /// <summary>The asset the payer chose, once payment is accepted.</summary>
     public AssetDescriptor? SettledAsset { get; }
@@ -35,4 +38,26 @@ public sealed class PaymentGateResult
 
     /// <summary>Why payment was refused, when it was.</summary>
     public string? FailureReason { get; }
+
+    /// <summary>
+    /// Set when the request was refused because another request is settling the same authorization
+    /// right now — the same text <see cref="Result"/> already carries as a
+    /// <see cref="PaymentConflictResult"/>. Exposed separately so a caller can log it or vary its
+    /// own behaviour without inspecting the result object.
+    /// </summary>
+    public string? ConflictReason { get; }
+
+    private static X402HandlerResult? BuildResult(PaymentAttempt attempt)
+    {
+        if (attempt.CanContinue)
+        {
+            return null;
+        }
+
+        // ConflictReason is checked before Result is dereferenced: a Conflict attempt leaves
+        // Result null, exactly as X402Middleware.WriteRefusalAsync already relies on.
+        return attempt.ConflictReason is { } conflict
+            ? new PaymentConflictResult(conflict)
+            : attempt.Result!;
+    }
 }
