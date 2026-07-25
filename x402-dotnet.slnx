@@ -8,6 +8,7 @@
     <Project Path="tests/X402.AspNetCore.Tests/X402.AspNetCore.Tests.csproj" />
     <Project Path="tests/X402.Client.Tests/X402.Client.Tests.csproj" />
     <Project Path="tests/X402.Core.Tests/X402.Core.Tests.csproj" />
+    <Project Path="tests/X402.Integration.Tests/X402.Integration.Tests.csproj" />
     <Project Path="tests/X402.TestKit.Tests/X402.TestKit.Tests.csproj" />
     <Project Path="tests/X402.TestKit/X402.TestKit.csproj" />
   </Folder>
