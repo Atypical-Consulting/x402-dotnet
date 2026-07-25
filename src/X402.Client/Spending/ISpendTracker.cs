@@ -7,8 +7,10 @@ namespace X402.Client.Spending;
 /// asset's session budget has already been committed.
 /// </summary>
 /// <remarks>
-/// Limits and running totals are held per asset and never aggregated: spending euros never draws
-/// down the dollar budget, and vice versa. An asset with no declared limit is never payable.
+/// Limits and running totals are held per asset identity — network plus contract address, not
+/// ticker symbol — and never aggregated: spending euros never draws down the dollar budget, and
+/// spending EURC on a testnet never draws down the limit set for EURC on mainnet, even though the
+/// two share a symbol. An asset with no declared limit is never payable.
 /// </remarks>
 public interface ISpendTracker
 {
