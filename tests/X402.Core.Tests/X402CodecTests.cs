@@ -10,7 +10,7 @@ public sealed class X402CodecTests
     [Fact]
     public void Header_names_match_the_v2_transport_specification()
     {
-        // La v1 utilisait X-PAYMENT. Ce test empêche une régression vers l'ancien nom.
+        // v1 used X-PAYMENT. This test guards against a regression to the old name.
         X402Headers.PaymentRequired.ShouldBe("PAYMENT-REQUIRED");
         X402Headers.PaymentSignature.ShouldBe("PAYMENT-SIGNATURE");
         X402Headers.PaymentResponse.ShouldBe("PAYMENT-RESPONSE");
@@ -43,7 +43,7 @@ public sealed class X402CodecTests
 
         var encoded = X402Codec.Encode(value);
 
-        // Décodable par n'importe quel décodeur base64 standard, et le résultat est du JSON UTF-8.
+        // Decodable by any standard base64 decoder, and the result is UTF-8 JSON.
         var json = Encoding.UTF8.GetString(Convert.FromBase64String(encoded));
         json.ShouldStartWith("{");
         json.ShouldContain("\"success\"");
@@ -54,15 +54,15 @@ public sealed class X402CodecTests
     [InlineData("")]
     [InlineData("   ")]
     [InlineData("not base64!!")]
-    [InlineData("YWJj")]                        // base64 valide, JSON invalide
-    [InlineData("eyJmb28iOiJiYXIifQ==")]        // JSON valide, mais pas la bonne forme
+    [InlineData("YWJj")]                        // valid base64, invalid JSON
+    [InlineData("eyJmb28iOiJiYXIifQ==")]        // valid JSON, but the wrong shape
     public void TryDecode_never_throws_on_hostile_input(string? header)
     {
-        // Ces valeurs viennent du réseau, mais TryDecode les couvre déjà toutes par construction
-        // (base64 invalide, JSON invalide, forme inattendue). Une exception qui s'échapperait ici
-        // serait une régression de son propre traitement d'erreur — une faute de développement à
-        // corriger dans TryDecode, pas un vecteur de déni de service : atteindre ce chemin exige de
-        // casser le code, pas d'envoyer une requête particulière.
+        // These values come from the network, but TryDecode already covers all of them by
+        // construction (invalid base64, invalid JSON, unexpected shape). An exception escaping
+        // here would be a regression in its own error handling — a development mistake to fix
+        // in TryDecode, not a denial-of-service vector: reaching this path requires breaking
+        // the code, not sending a particular request.
         var ok = X402Codec.TryDecode<PaymentRequired>(header, out var value, out var error);
 
         ok.ShouldBeFalse();

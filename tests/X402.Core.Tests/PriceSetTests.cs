@@ -17,7 +17,7 @@ public sealed class PriceSetTests
     [Fact]
     public void An_array_converts_implicitly_and_keeps_its_order()
     {
-        // L'ordre est une promesse commerciale : il devient l'ordre du tableau accepts.
+        // Order is a commercial promise: it becomes the order of the accepts array.
         PriceSet set = new[]
         {
             Price.For(KnownAssets.EurcBaseSepolia, 0.010m),
@@ -45,8 +45,8 @@ public sealed class PriceSetTests
     [Fact]
     public void Assets_from_different_networks_cannot_be_mixed()
     {
-        // Une réponse 402 annonce des exigences ; les mélanger entre réseaux produirait
-        // une offre que le serveur ne sait pas honorer.
+        // A 402 response advertises requirements; mixing them across networks would produce
+        // an offer the server cannot honour.
         Should.Throw<ArgumentException>(() => new PriceSet([
             Price.For(KnownAssets.EurcBaseSepolia, 0.010m),
             Price.For(KnownAssets.UsdcBaseMainnet, 0.011m),

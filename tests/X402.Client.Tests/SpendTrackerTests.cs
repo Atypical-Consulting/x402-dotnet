@@ -53,8 +53,8 @@ public sealed class SpendTrackerTests
     [Fact]
     public void Spending_euros_does_not_consume_the_dollar_budget()
     {
-        // Deux compteurs distincts. Un compteur unique supposerait un taux de change
-        // que cette bibliothèque n'a pas et n'ira pas chercher.
+        // Two separate counters. A single counter would assume an exchange rate
+        // this library does not have and will not go looking for.
         var tracker = new InMemorySpendTracker(Options());
 
         for (var i = 0; i < 4; i++)
@@ -68,7 +68,7 @@ public sealed class SpendTrackerTests
     [Fact]
     public void An_asset_without_a_declared_limit_is_refused()
     {
-        // Un agent qui découvre un actif inattendu dans accepts ne doit pas pouvoir le payer.
+        // An agent that discovers an unexpected asset in accepts must not be able to pay it.
         var tracker = new InMemorySpendTracker(new X402ClientOptions());
 
         var exception = Should.Throw<SpendingLimitExceededException>(
@@ -101,7 +101,7 @@ public sealed class SpendTrackerTests
     [Fact]
     public void A_refund_releases_session_budget()
     {
-        // Le paiement a été refusé après réservation : le budget doit revenir.
+        // The payment was refused after reservation: the budget must be returned.
         var options = new X402ClientOptions();
         options.SetLimits(KnownAssets.EurcBaseSepolia, perRequest: 0.05m, perSession: 0.05m);
         var tracker = new InMemorySpendTracker(options);

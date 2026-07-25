@@ -36,8 +36,8 @@ public sealed class CoreArchitectureTests
     [Fact]
     public void Core_does_not_reference_any_networking_assembly()
     {
-        // US-17 exige qu'aucune vérification de licence réseau ni télémétrie ne puisse exister
-        // dans le noyau. Le garantir par l'absence de dépendance plutôt que par la discipline.
+        // US-17 requires that no network licence check or telemetry can exist in the core.
+        // Guarantee it through the absence of a dependency rather than through discipline.
         var referenced = Core.GetReferencedAssemblies().Select(a => a.Name).ToList();
 
         // Check for all System.Net.* assemblies using prefix match.
@@ -52,7 +52,7 @@ public sealed class CoreArchitectureTests
     [Fact]
     public void Core_does_not_use_any_networking_or_telemetry_type()
     {
-        // Une référence peut être élidée par le compilateur ; on vérifie aussi les types utilisés.
+        // A reference can be elided by the compiler; we also check the types actually used.
         // Scan method signatures (return types and parameter types), field types, and generic arguments.
         var networkingAndTelemetryTypes = Core.GetTypes()
             .SelectMany(t => t.GetMethods(BindingFlags.Public | BindingFlags.NonPublic

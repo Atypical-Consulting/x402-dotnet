@@ -54,8 +54,8 @@ public sealed class SettlementLedgerTests
     [Fact]
     public async Task An_abandoned_nonce_can_be_acquired_again()
     {
-        // L'endpoint a levé avant règlement : l'autorisation est encore valable en chaîne,
-        // le client doit pouvoir réessayer.
+        // The endpoint threw before settlement: the authorization is still valid on-chain,
+        // the client must be able to retry.
         var ledger = new InMemorySettlementLedger();
         await ledger.AcquireAsync(Identity(), TestContext.Current.CancellationToken);
         await ledger.AbandonAsync(Identity(), TestContext.Current.CancellationToken);
@@ -121,8 +121,8 @@ public sealed class SettlementLedgerTests
 
         await Task.Delay(150, TestContext.Current.CancellationToken);
 
-        // Passé validBefore, l'autorisation est refusée en chaîne : garder l'entrée ne
-        // protégerait plus rien et ferait croître la mémoire sans fin.
+        // Past validBefore, the authorization is refused on-chain: keeping the entry would no
+        // longer protect anything and would grow memory without bound.
         var slot = await ledger.AcquireAsync(Identity(), TestContext.Current.CancellationToken);
         slot.State.ShouldBe(SettlementSlotState.Acquired);
     }

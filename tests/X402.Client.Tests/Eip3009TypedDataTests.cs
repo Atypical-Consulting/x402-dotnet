@@ -98,8 +98,9 @@ public sealed class Eip3009TypedDataTests
     [Fact]
     public void The_domain_is_taken_from_the_asset_not_from_the_requirement_extra()
     {
-        // extra vient du serveur, donc du réseau. L'actif résolu localement fait foi :
-        // sinon un serveur malveillant ferait signer sous un domaine de son choix.
+        // extra comes from the server, i.e. from the network. The locally resolved asset is
+        // authoritative: otherwise a malicious server could get a signature made under a
+        // domain of its own choosing.
         var asset = KnownAssets.UsdcBaseMainnet;
         var requirements = Requirements(asset) with
         {

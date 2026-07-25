@@ -50,7 +50,7 @@ public sealed class FakeFacilitatorTests : IAsyncLifetime
     [Fact]
     public async Task Verify_rejects_a_signature_that_recovers_to_another_address()
     {
-        // La vérification est RÉELLE : on altère la signature d'un octet et elle doit tomber.
+        // Verification is REAL: we alter the signature by one byte and it must fail.
         var request = await TestData.SignedRequestAsync(TestData.EurcSepoliaRequirements());
         var exact = request.PaymentPayload.AsExactEvm();
         var tampered = exact with { Signature = TestData.FlipOneByte(exact.Signature) };
@@ -136,8 +136,8 @@ public sealed class FakeFacilitatorTests : IAsyncLifetime
     [Fact]
     public async Task Settling_the_same_nonce_twice_is_visible_to_the_test()
     {
-        // Le facilitateur simulé ne protège pas contre le double règlement : il le SIGNALE,
-        // pour que le test d'idempotence du serveur (tâche 9) puisse échouer bruyamment.
+        // The fake facilitator does not guard against double settlement: it FLAGS it,
+        // so the server's idempotency test (task 9) can fail loudly.
         var request = await TestData.SignedRequestAsync(TestData.EurcSepoliaRequirements());
 
         await client.PostAsJsonAsync("/settle", request, X402Json.Options, TestContext.Current.CancellationToken);
@@ -163,7 +163,7 @@ public sealed class FakeFacilitatorTests : IAsyncLifetime
     [Fact]
     public async Task The_unsupported_asset_scenario_rejects_assets_outside_its_allow_list()
     {
-        // Simule le facilitateur qui ne règle que l'USDC (§2.1.6) : l'EURC doit être refusé.
+        // Simulates a facilitator that only settles USDC (§2.1.6): EURC must be refused.
         facilitator.Scenario = FakeFacilitatorScenario.UnsupportedAsset;
         facilitator.SupportedAssets = [KnownAssets.UsdcBaseSepolia.Address];
         var request = await TestData.SignedRequestAsync(TestData.EurcSepoliaRequirements());

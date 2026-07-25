@@ -11,7 +11,7 @@ public sealed class FeatureGateTests
     [InlineData("anything.at.all")]
     public void The_default_gate_allows_everything(string feature)
     {
-        // US-17 : comportement inchangé pour qui ne configure rien.
+        // US-17: unchanged behaviour for anyone who configures nothing.
         new AllowAllFeatureGate().IsEnabled(feature).ShouldBeTrue();
     }
 }

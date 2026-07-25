@@ -42,7 +42,7 @@ public sealed class PrivateKeyPaymentSignerTests
             TestContext.Current.CancellationToken);
 
         payload.Signature.ShouldStartWith("0x");
-        payload.Signature.Length.ShouldBe(132);   // 0x + 65 octets
+        payload.Signature.Length.ShouldBe(132);   // 0x + 65 bytes
         var recovered = new Eip712TypedDataSigner().RecoverFromSignatureV4(
             Eip3009TypedData.Build(requirements, authorization, asset), payload.Signature);
         recovered.IsTheSameAddress(signer.Address).ShouldBeTrue();
@@ -51,7 +51,7 @@ public sealed class PrivateKeyPaymentSignerTests
     [Fact]
     public async Task Signing_the_same_authorization_twice_gives_the_same_signature()
     {
-        // ECDSA déterministe (RFC 6979) : utile pour reproduire un incident.
+        // Deterministic ECDSA (RFC 6979): useful for reproducing an incident.
         var asset = KnownAssets.EurcBaseSepolia;
         var requirements = new PaymentRequirements
         {

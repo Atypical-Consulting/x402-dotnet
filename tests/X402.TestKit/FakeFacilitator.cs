@@ -200,7 +200,7 @@ public sealed class FakeFacilitator : IAsyncDisposable
         {
             Success = true,
             Payer = PayerOf(request),
-            // Hash déterministe dérivé du nonce : reproductible, donc assertable.
+            // Deterministic hash derived from the nonce: reproducible, hence assertable.
             Transaction = "0x" + Convert.ToHexString(
                 System.Security.Cryptography.SHA256.HashData(
                     System.Text.Encoding.UTF8.GetBytes(authorization.Nonce))).ToLowerInvariant(),
@@ -269,7 +269,7 @@ public sealed class FakeFacilitator : IAsyncDisposable
 
         var authorization = exact.Authorization;
 
-        // 1. Signature : reconstruire le TypedData exactement comme le payeur l'a signé.
+        // 1. Signature: reconstruct the TypedData exactly as the payer signed it.
         var asset = AssetFor(requirements);
         var typedData = Eip3009TypedData.Build(requirements, authorization, asset);
 
@@ -282,7 +282,7 @@ public sealed class FakeFacilitator : IAsyncDisposable
             return X402ErrorReason.InvalidExactEvmPayloadSignature;
         }
 
-        // 2. Fenêtre de validité.
+        // 2. Validity window.
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         if (long.Parse(authorization.ValidAfter) > now)
         {
@@ -294,13 +294,13 @@ public sealed class FakeFacilitator : IAsyncDisposable
             return X402ErrorReason.InvalidExactEvmPayloadAuthorizationValidBefore;
         }
 
-        // 3. Montant exact.
+        // 3. Exact amount.
         if (authorization.Value != requirements.Amount)
         {
             return X402ErrorReason.InvalidExactEvmPayloadAuthorizationValueMismatch;
         }
 
-        // 4. Bénéficiaire.
+        // 4. Recipient.
         if (!authorization.To.IsTheSameAddress(requirements.PayTo))
         {
             return X402ErrorReason.InvalidExactEvmPayloadRecipientMismatch;

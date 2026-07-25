@@ -5,9 +5,9 @@ namespace X402.Core.Tests;
 
 public sealed class KnownAssetsTests
 {
-    // Valeurs lues en chaîne le 2026-07-24 via eth_call sur les RPC publics Base et Base Sepolia
-    // (name(), version(), decimals(), authorizationState()). Voir spec §2.1.7.
-    // Ne JAMAIS corriger ce tableau depuis une documentation : le relire en chaîne.
+    // Values read on-chain on 2026-07-24 via eth_call against the public Base and Base Sepolia
+    // RPCs (name(), version(), decimals(), authorizationState()). See spec §2.1.7.
+    // NEVER correct this table from documentation: re-read it on-chain.
     [Theory]
     [InlineData("EURC", "eip155:84532", "0x808456652fdb597867f38412077A9182bf77359F", "EURC", "2", 6)]
     [InlineData("EURC", "eip155:8453", "0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42", "EURC", "2", 6)]
@@ -28,8 +28,8 @@ public sealed class KnownAssetsTests
     [Fact]
     public void Usdc_changes_its_eip712_name_between_networks_but_eurc_does_not()
     {
-        // L'asymétrie qui coûte cher. Explicitée ici pour qu'une "harmonisation" bien
-        // intentionnée du catalogue casse ce test au lieu de casser les paiements mainnet.
+        // The asymmetry that costs money. Spelled out here so that a well-intentioned
+        // "harmonization" of the catalogue breaks this test instead of breaking mainnet payments.
         KnownAssets.UsdcBaseSepolia.Eip712Name.ShouldBe("USDC");
         KnownAssets.UsdcBaseMainnet.Eip712Name.ShouldBe("USD Coin");
 
@@ -53,7 +53,7 @@ public sealed class KnownAssetsTests
     [Fact]
     public void ForNetwork_lists_the_euro_asset_first()
     {
-        // L'ordre du catalogue est le défaut proposé aux opérateurs : l'euro d'abord (§3.1).
+        // The catalogue's order is the default offered to operators: the euro comes first (§3.1).
         KnownAssets.ForNetwork(KnownNetworks.BaseSepolia)
             .Select(a => a.Symbol)
             .ShouldBe(["EURC", "USDC"]);

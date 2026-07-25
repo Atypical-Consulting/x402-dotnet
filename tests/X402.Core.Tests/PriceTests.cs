@@ -23,8 +23,8 @@ public sealed class PriceTests
     [Fact]
     public void For_refuses_to_round_away_someone_s_money()
     {
-        // 7 décimales sur un actif qui en a 6 : arrondir serait facturer un montant que
-        // l'opérateur n'a pas écrit. On refuse.
+        // 7 decimals on an asset that has 6: rounding would charge an amount the
+        // operator never wrote. We refuse.
         var tooPrecise = 0.0000001m;
 
         var exception = Should.Throw<ArgumentOutOfRangeException>(
@@ -83,7 +83,7 @@ public sealed class PriceTests
     [Fact]
     public void There_is_no_conversion_between_assets()
     {
-        // D9 : verrouille l'absence de toute API de change sur la surface publique.
+        // D9: locks in the absence of any exchange API on the public surface.
         var names = typeof(Price).GetMethods()
             .Concat(typeof(PriceSet).GetMethods())
             .Where(m => m.IsPublic)

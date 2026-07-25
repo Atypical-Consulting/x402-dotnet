@@ -37,7 +37,7 @@ public sealed class EndToEndTests
             new { Tokens = 250 }, TestContext.Current.CancellationToken);
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
-        // 250 jetons à 0.001 EURC : 0.250 EURC.
+        // 250 tokens at 0.001 EURC: 0.250 EURC.
         fixture.Facilitator.LastRequestBody!.ShouldContain("\"amount\":\"250000\"");
     }
 
@@ -79,7 +79,7 @@ public sealed class EndToEndTests
         var paid = await fixture.Agent.GetAsync("/premium", TestContext.Current.CancellationToken);
         var header = fixture.LastPaymentSignature!;
 
-        // Rejeu manuel de la MÊME autorisation, comme le ferait un client malveillant.
+        // Manual replay of the SAME authorization, as a malicious client would.
         using var replay = new HttpRequestMessage(HttpMethod.Get, "/premium");
         replay.Headers.Add(Transport.X402Headers.PaymentSignature, header);
         var replayed = await fixture.RawClient.SendAsync(replay,
@@ -98,7 +98,7 @@ public sealed class EndToEndTests
             configureAgent: o =>
             {
                 o.SetLimits(KnownAssets.UsdcBaseSepolia, perRequest: 1m, perSession: 10m);
-                // aucune limite EURC déclarée : l'euro est donc impayable pour cet agent
+                // no EURC limit declared: the euro is therefore unpayable for this agent
             });
 
         var response = await fixture.Agent.GetAsync("/premium",
@@ -111,21 +111,21 @@ public sealed class EndToEndTests
     [Fact]
     public async Task A_facilitator_refusing_an_asset_surfaces_a_clean_non_looping_refusal()
     {
-        // §2.1.6 : la bibliothèque supporte l'EURC, le facilitateur choisi peut ne pas le régler.
-        // Ceci ne démontre PAS une dégradation automatique de l'offre vers un actif payable :
-        // IFacilitatorClient.GetSupportedAsync existe mais n'a aucun appelant dans src/ (code
-        // mort à ce jour), donc rien ne consulte les capacités du facilitateur pour adapter les
-        // `accepts` annoncés au client. Adapter l'offre exigerait d'appeler GetSupportedAsync
-        // quelque part dans le pipeline serveur, ce qui n'existe pas. Ce test prouve seulement
-        // que le refus du facilitateur remonte à l'agent comme un refus propre et sans boucle —
-        // le même chemin structurel que le scénario de vérification refusée, atteint par un
-        // autre levier (l'actif plutôt que les fonds).
+        // §2.1.6: this library supports EURC, the chosen facilitator may not settle it.
+        // This does NOT demonstrate an automatic degradation of the offer to a payable asset:
+        // IFacilitatorClient.GetSupportedAsync exists but has no caller in src/ (dead code as
+        // of today), so nothing consults the facilitator's capabilities to adapt the `accepts`
+        // advertised to the client. Adapting the offer would require calling GetSupportedAsync
+        // somewhere in the server pipeline, which does not exist. This test only proves that
+        // the facilitator's refusal surfaces to the agent as a clean, non-looping refusal —
+        // the same structural path as the refused-verification scenario, reached by a
+        // different lever (the asset rather than the funds).
         await using var fixture = await PaidApiFixture.StartAsync();
         fixture.Facilitator.Scenario = FakeFacilitatorScenario.UnsupportedAsset;
         fixture.Facilitator.SupportedAssets = [KnownAssets.UsdcBaseSepolia.Address];
 
-        // L'agent tente l'euro, se fait refuser, et n'a pas de second essai automatique :
-        // la conséquence est visible, ce qui est le comportement voulu.
+        // The agent tries the euro, gets refused, and has no automatic second attempt:
+        // the consequence is visible, which is the intended behaviour.
         await Should.ThrowAsync<PaymentRejectedException>(
             () => fixture.Agent.GetAsync("/premium", TestContext.Current.CancellationToken));
     }

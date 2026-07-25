@@ -105,7 +105,7 @@ public static class TestData
     public static string FlipOneByte(string hexSignature)
     {
         var chars = hexSignature.ToCharArray();
-        // Position 10 : dans le corps de la signature, jamais dans le préfixe 0x ni l'octet v.
+        // Position 10: inside the signature body, never in the 0x prefix or the v byte.
         chars[10] = chars[10] == 'a' ? 'b' : 'a';
         return new string(chars);
     }

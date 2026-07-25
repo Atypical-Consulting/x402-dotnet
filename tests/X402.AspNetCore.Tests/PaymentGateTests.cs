@@ -33,7 +33,7 @@ public sealed class PaymentGateTests
         var dear = server.DecodeDemand(await server.Client.PostAsJsonAsync(
             "/analyze", new { Tokens = 1000 }, TestContext.Current.CancellationToken));
 
-        // 0.001 EURC par jeton : 10 jetons → 0.010 EURC, 1000 jetons → 1.000 EURC.
+        // 0.001 EURC per token: 10 tokens → 0.010 EURC, 1000 tokens → 1.000 EURC.
         cheap.Accepts[0].Amount.ShouldBe("10000");
         dear.Accepts[0].Amount.ShouldBe("1000000");
     }
@@ -70,7 +70,7 @@ public sealed class PaymentGateTests
         var response = await server.PayDynamicAsync(
             "/analyze", new { Tokens = 100 }, KnownAssets.UsdcBaseSepolia);
 
-        // /analyze renvoie SettledAsset dans son corps, pour que le test puisse l'observer.
+        // /analyze returns SettledAsset in its body, so the test can observe it.
         (await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))
             .ShouldContain("USDC");
     }
@@ -130,7 +130,7 @@ public sealed class PaymentGateTests
     [Fact]
     public async Task Opening_a_gate_without_UseX402_fails_loudly()
     {
-        // Sans le trajet sortant, le contenu serait livré sans jamais être réglé.
+        // Without the outbound leg, the content would be delivered without ever being settled.
         await using var server = await PaidServerFixture.StartAsync(withMiddleware: false);
 
         var response = await server.Client.PostAsJsonAsync(

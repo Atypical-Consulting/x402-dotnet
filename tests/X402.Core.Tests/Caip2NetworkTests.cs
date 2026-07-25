@@ -23,7 +23,7 @@ public sealed class Caip2NetworkTests
     [InlineData("eip155:")]
     [InlineData(":8453")]
     [InlineData("eip155:8453:extra")]
-    [InlineData("base-sepolia")]   // identifiant v1, explicitement non supporté
+    [InlineData("base-sepolia")]   // v1 identifier, explicitly unsupported
     [InlineData("eip155:-8453")]   // negative chain id, rejected
     public void TryParse_rejects_malformed_identifiers(string value)
     {

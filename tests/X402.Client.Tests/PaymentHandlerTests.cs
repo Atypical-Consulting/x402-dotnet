@@ -62,13 +62,13 @@ public sealed class PaymentHandlerTests
     [Fact]
     public async Task An_asset_over_its_limit_falls_back_to_another_within_limits()
     {
-        // Un agent à court d'euros doit pouvoir payer en dollars plutôt qu'échouer.
+        // An agent short on euros must be able to pay in dollars rather than fail.
         using var harness = PayingClientHarness.CreatePaywall(
             KnownAssets.EurcBaseSepolia, KnownAssets.UsdcBaseSepolia,
             configure: o =>
             {
-                // Le symbole seul ne suffit pas à identifier un actif (voir AssetIdentity) :
-                // les plafonds se posent par AssetDescriptor, donc par réseau + adresse.
+                // The symbol alone isn't enough to identify an asset (see AssetIdentity):
+                // limits are set per AssetDescriptor, i.e. per network + address.
                 o.SetLimits(KnownAssets.EurcBaseSepolia, perRequest: 0.000001m, perSession: 0.000001m);
                 o.SetLimits(KnownAssets.UsdcBaseSepolia, perRequest: 1m, perSession: 1m);
             });
@@ -78,7 +78,7 @@ public sealed class PaymentHandlerTests
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         harness.PaidAsset.ShouldBe(KnownAssets.UsdcBaseSepolia.Address);
-        harness.SignatureCount.ShouldBe(1); // EURC était rejeté avant toute signature, jamais signé
+        harness.SignatureCount.ShouldBe(1); // EURC was rejected before any signing, never signed
     }
 
     [Fact]
@@ -92,8 +92,8 @@ public sealed class PaymentHandlerTests
             () => harness.Client.GetAsync("https://api.test/premium",
                 TestContext.Current.CancellationToken));
 
-        harness.RequestCount.ShouldBe(1);     // aucune requête de rejeu
-        harness.SignatureCount.ShouldBe(0);   // rien n'a été signé
+        harness.RequestCount.ShouldBe(1);     // no replay request
+        harness.SignatureCount.ShouldBe(0);   // nothing was signed
     }
 
     [Fact]
@@ -113,11 +113,11 @@ public sealed class PaymentHandlerTests
     [Fact]
     public async Task A_post_body_is_replayed_intact()
     {
-        // Sans rebufferisation, le rejeu partirait avec un corps vide — le bug le plus courant de
-        // ce genre de handler. Le contenu est un StreamContent sur un flux non-recherchable à
-        // lecture unique, pas un JsonContent : ce dernier se re-sérialise depuis l'objet à chaque
-        // envoi et rejouerait correctement même sans aucune bufferisation, ce qui ne prouverait
-        // rien sur le handler.
+        // Without re-buffering, the replay would go out with an empty body — the most common
+        // bug in this kind of handler. The content is a StreamContent over a non-seekable,
+        // single-read stream, not a JsonContent: the latter re-serializes from the object on
+        // every send and would replay correctly even with no buffering at all, which would
+        // prove nothing about the handler.
         using var harness = PayingClientHarness.CreatePaywall(KnownAssets.EurcBaseSepolia);
         using var request = new HttpRequestMessage(HttpMethod.Post, "https://api.test/premium")
         {
@@ -134,10 +134,10 @@ public sealed class PaymentHandlerTests
     [Fact]
     public async Task Posting_via_the_common_JsonContent_convenience_path_also_succeeds()
     {
-        // Documente que le chemin courant (PostAsJsonAsync) fonctionne de bout en bout. Ce test ne
-        // prouve rien sur la bufferisation elle-même : JsonContent se re-sérialise depuis l'objet
-        // à chaque envoi, donc il rejouerait correctement même si le handler ne bufferisait rien —
-        // voir A_post_body_is_replayed_intact pour le test qui exerce réellement l'étape 1.
+        // Documents that the common path (PostAsJsonAsync) works end to end. This test proves
+        // nothing about buffering itself: JsonContent re-serializes from the object on every
+        // send, so it would replay correctly even if the handler buffered nothing — see
+        // A_post_body_is_replayed_intact for the test that actually exercises step 1.
         using var harness = PayingClientHarness.CreatePaywall(KnownAssets.EurcBaseSepolia);
 
         var response = await harness.Client.PostAsJsonAsync("https://api.test/premium",
@@ -158,7 +158,7 @@ public sealed class PaymentHandlerTests
             () => harness.Client.GetAsync("https://api.test/premium",
                 TestContext.Current.CancellationToken));
 
-        harness.RequestCount.ShouldBe(2);   // un seul rejeu
+        harness.RequestCount.ShouldBe(2);   // a single replay
     }
 
     [Fact]
@@ -242,8 +242,8 @@ public sealed class PaymentHandlerTests
         var validAfter = long.Parse(authorization.ValidAfter);
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
-        // validAfter dans le passé : sans marge, une horloge serveur légèrement en retard
-        // rejetterait l'autorisation pour "pas encore valide".
+        // validAfter in the past: without slack, a server clock running slightly behind
+        // would reject the authorization as "not yet valid".
         validAfter.ShouldBeLessThan(now);
         long.Parse(authorization.ValidBefore).ShouldBeGreaterThan(now);
     }
