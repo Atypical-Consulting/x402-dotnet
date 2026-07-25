@@ -294,6 +294,15 @@ its own edges:
   `X402.AspNetCore` or `X402.Client` consults it to adjust which assets are offered or accepted.
   That decision is left to the operator, typically informed by running `--probe` once against the
   chosen facilitator.
+- **`TestServer` (used throughout `X402.AspNetCore.Tests`) tolerates wire-level response
+  inconsistencies a real transport does not.** A stale `Content-Length` surviving onto a rewritten
+  402 — the endpoint's own declared length for a response the pipeline discards and replaces —
+  passed every test that only checked status code and body; `TestServer` does not enforce that a
+  declared length matches what is actually written, where a real Kestrel connection aborts instead.
+  Found and fixed once (a scoped re-review reproduced it against a real, minimal Kestrel app); the
+  tests added for that fix assert the header itself for exactly this reason. The same blind spot
+  could still hide an equivalent defect anywhere else in this suite that has not been checked the
+  same explicit way.
 
 ## Tech Stack
 

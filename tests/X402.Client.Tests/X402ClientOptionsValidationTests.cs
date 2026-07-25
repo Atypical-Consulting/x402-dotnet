@@ -92,6 +92,37 @@ public sealed class X402ClientOptionsValidationTests
     }
 
     [Fact]
+    public void A_zero_limit_fails_at_startup_just_like_no_limit_at_all()
+    {
+        // SetLimits(asset, 0m, 0m) passes SetLimits's own ArgumentOutOfRangeException.ThrowIfNegative
+        // guard (zero is not negative) and stores validly — then InMemorySpendTracker refuses every
+        // non-zero payment for that asset, the same outcome the empty-dictionary check exists to
+        // catch, just for one asset instead of the whole configuration.
+        var exception = Should.Throw<OptionsValidationException>(() => Validate(o =>
+            o.SetLimits(KnownAssets.EurcBaseSepolia, perRequest: 0m, perSession: 0m)));
+
+        exception.Message.ShouldContain(KnownAssets.EurcBaseSepolia.Address);
+        exception.Message.ShouldContain("PerRequest");
+        exception.Message.ShouldContain("PerSession");
+    }
+
+    [Fact]
+    public void A_zero_per_request_limit_alone_fails_at_startup()
+    {
+        var exception = Should.Throw<OptionsValidationException>(() => Validate(o =>
+            o.SetLimits(KnownAssets.EurcBaseSepolia, perRequest: 0m, perSession: 10m)));
+
+        exception.Message.ShouldContain(KnownAssets.EurcBaseSepolia.Address);
+    }
+
+    [Fact]
+    public void A_tiny_but_positive_limit_validates()
+    {
+        Should.NotThrow(() => Validate(o =>
+            o.SetLimits(KnownAssets.EurcBaseSepolia, perRequest: 0.000001m, perSession: 0.000001m)));
+    }
+
+    [Fact]
     public void Multiple_assets_each_with_a_valid_limit_all_validate()
     {
         Should.NotThrow(() => Validate(o =>
@@ -115,5 +146,39 @@ public sealed class X402ClientOptionsValidationTests
         // call to fix.
         exception.Message.ShouldContain(KnownAssets.UsdcBaseSepolia.Address);
         exception.Message.ShouldContain(KnownAssets.UsdcBaseSepolia.Network);
+    }
+
+    [Fact]
+    public void A_negative_max_buffered_request_bytes_fails_at_startup()
+    {
+        // Confirmed to otherwise fail deep inside X402PaymentHandler on the first request that
+        // actually carries a body ("Cannot write more bytes to the buffer than the configured
+        // maximum buffer size: -1") rather than at start-up — the same shape every other check in
+        // this validator exists to move earlier.
+        var exception = Should.Throw<OptionsValidationException>(() => Validate(o =>
+        {
+            SeedOneValidLimit(o);
+            o.MaxBufferedRequestBytes = -1;
+        }));
+
+        exception.Message.ShouldContain("MaxBufferedRequestBytes");
+    }
+
+    [Fact]
+    public void A_zero_max_buffered_request_bytes_validates()
+    {
+        // Zero is a legitimate (if impractical) choice — mirrors the server's own
+        // MaxBufferedResponseBytes, which also only rejects strictly negative values.
+        Should.NotThrow(() => Validate(o =>
+        {
+            SeedOneValidLimit(o);
+            o.MaxBufferedRequestBytes = 0;
+        }));
+    }
+
+    [Fact]
+    public void The_default_max_buffered_request_bytes_validates()
+    {
+        Should.NotThrow(() => Validate(SeedOneValidLimit));
     }
 }

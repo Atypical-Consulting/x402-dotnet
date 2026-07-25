@@ -197,6 +197,26 @@ public sealed class PaymentHandlerTests
     }
 
     [Fact]
+    public async Task A_second_402_with_an_undecodable_header_still_raises_without_crashing()
+    {
+        // Distinct from A_second_402_with_no_stated_reason_still_says_so_rather_than_stay_silent:
+        // there the header decodes fine and simply carries no Error; here the header itself is not
+        // a valid encoded PaymentRequired at all — the false arm of X402PaymentHandler's own
+        // decodedRejection ternary, which PaymentRejectedException's XML docs on Reason and
+        // PaymentRequired both promise stays null in exactly this case.
+        using var harness = PayingClientHarness.CreateAlwaysPaywalled(
+            KnownAssets.EurcBaseSepolia, malformedSecondRejection: true);
+
+        var exception = await Should.ThrowAsync<PaymentRejectedException>(
+            () => harness.Client.GetAsync("https://api.test/premium",
+                TestContext.Current.CancellationToken));
+
+        exception.Reason.ShouldBeNull();
+        exception.PaymentRequired.ShouldBeNull();
+        exception.Message.ShouldContain("the server gave no reason");
+    }
+
+    [Fact]
     public async Task The_settlement_receipt_is_exposed_on_the_response()
     {
         using var harness = PayingClientHarness.CreatePaywall(KnownAssets.EurcBaseSepolia);

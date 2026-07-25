@@ -222,6 +222,13 @@ internal sealed class X402PaymentProcessor(
             // attempted and failed, so falling through to SettleAsync below would settle — and
             // charge — a second time for the same authorization.
             buffering.Discard();
+            // Not Headers.Clear(): unlike the refusal path, nothing has been written to the
+            // response's headers here (this branch is reached before SettleAsync ever runs, so no
+            // PAYMENT-RESPONSE exists yet to protect) — but the endpoint may already have set
+            // Content-Length for the body it never got to finish writing. Left as-is, that stale
+            // value survives onto the 2-byte {} PaymentRequiredResult writes below and a real
+            // transport (Kestrel, unlike TestServer) aborts the response trying to satisfy it.
+            context.Response.ContentLength = null;
             await new PaymentRequiredResult(attempt.Demand!).ExecuteAsync(context);
             return;
         }
@@ -242,6 +249,16 @@ internal sealed class X402PaymentProcessor(
 
         // Settlement failed within the cap: the buffered content is discarded, never delivered.
         buffering.Discard();
+        // Same stale-Content-Length hazard as the Poisoned branch above — see its comment. Not
+        // Headers.Clear() here: when the facilitator responded with a failure rather than being
+        // unreachable, SettleAsync already set PAYMENT-RESPONSE on this same context
+        // (context.Response.Headers[X402Headers.PaymentResponse], above) — the payer's only
+        // evidence that settlement was attempted and what it reported — and clearing the whole
+        // header collection would destroy it. (When SettleAsync instead caught a
+        // FacilitatorException, no such header was ever set — but the fix stays scoped to
+        // Content-Length regardless, since a blanket Headers.Clear() here would also strip
+        // anything outer middleware, CORS or otherwise, wrote directly onto this response.)
+        context.Response.ContentLength = null;
         await new PaymentRequiredResult(attempt.Demand!).ExecuteAsync(context);
     }
 

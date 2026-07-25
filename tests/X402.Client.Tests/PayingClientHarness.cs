@@ -105,15 +105,18 @@ public sealed class PayingClientHarness : IDisposable
     /// demanding it again even after being paid — so a second reply never settles. When
     /// <paramref name="rejectionReason"/> is given, the second (rejecting) demand carries it as
     /// <see cref="PaymentRequired.Error"/> — the same field <c>PaymentRejectedException.Reason</c>
-    /// is meant to surface.
+    /// is meant to surface. When <paramref name="malformedSecondRejection"/> is true, the second
+    /// 402's <c>PAYMENT-REQUIRED</c> header is not a valid encoded demand at all — exercises the
+    /// branch where <see cref="X402PaymentHandler"/>'s own decode of that header fails, distinct
+    /// from a demand that decodes but simply carries no <see cref="PaymentRequired.Error"/>.
     /// </summary>
     public static PayingClientHarness CreateAlwaysPaywalled(
-        AssetDescriptor asset, string? rejectionReason = null) =>
-        CreatePaywall([asset], alwaysPaywall: true, configure: null, rejectionReason);
+        AssetDescriptor asset, string? rejectionReason = null, bool malformedSecondRejection = false) =>
+        CreatePaywall([asset], alwaysPaywall: true, configure: null, rejectionReason, malformedSecondRejection);
 
     private static PayingClientHarness CreatePaywall(
         IReadOnlyList<AssetDescriptor> assets, bool alwaysPaywall, Action<X402ClientOptions>? configure,
-        string? rejectionReason = null)
+        string? rejectionReason = null, bool malformedSecondRejection = false)
     {
         var options = new X402ClientOptions();
         foreach (var asset in assets)
@@ -127,22 +130,34 @@ public sealed class PayingClientHarness : IDisposable
         configure?.Invoke(options);
 
         return new PayingClientHarness(options, (request, recorded) =>
-            RespondToPaywalled(request, recorded, assets, alwaysPaywall, rejectionReason));
+            RespondToPaywalled(
+                request, recorded, assets, alwaysPaywall, rejectionReason, malformedSecondRejection));
     }
 
     private static Task<HttpResponseMessage> RespondToPaywalled(
         HttpRequestMessage request, RecordedRequest recorded, IReadOnlyList<AssetDescriptor> assets,
-        bool alwaysPaywall, string? rejectionReason)
+        bool alwaysPaywall, string? rejectionReason, bool malformedSecondRejection)
     {
         if (!alwaysPaywall && recorded.Payload is not null)
         {
             return Task.FromResult(Settle(recorded.Payload, recorded.Body));
         }
 
-        // A rejection reason only makes sense once a payment was actually presented and refused —
-        // the very first 402 (no payload yet) is an ordinary demand, never a refusal.
-        var error = alwaysPaywall && recorded.Payload is not null ? rejectionReason : null;
+        // A rejection reason (or a malformed header) only makes sense once a payment was actually
+        // presented and refused — the very first 402 (no payload yet) is an ordinary demand, never
+        // a refusal.
+        var isRejection = alwaysPaywall && recorded.Payload is not null;
         var response = new HttpResponseMessage(HttpStatusCode.PaymentRequired);
+
+        if (isRejection && malformedSecondRejection)
+        {
+            // Not valid base64, so X402Codec.TryDecode<PaymentRequired> must fail cleanly rather
+            // than throw — same contract the first 402's own decode (step 3) already relies on.
+            response.Headers.Add(X402Headers.PaymentRequired, "not a decodable payment-required header");
+            return Task.FromResult(response);
+        }
+
+        var error = isRejection ? rejectionReason : null;
         response.Headers.Add(X402Headers.PaymentRequired, X402Codec.Encode(BuildDemand(assets, error)));
         return Task.FromResult(response);
     }

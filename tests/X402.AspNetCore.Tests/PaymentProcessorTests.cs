@@ -157,9 +157,20 @@ public sealed class PaymentProcessorTests : IAsyncLifetime
         var response = await server.PayAsync("/premium", KnownAssets.EurcBaseSepolia);
 
         response.StatusCode.ShouldBe(HttpStatusCode.PaymentRequired);
-        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
-        body.ShouldNotContain("premium content");
+        var body = await response.Content.ReadAsByteArrayAsync(TestContext.Current.CancellationToken);
+        var text = System.Text.Encoding.UTF8.GetString(body);
+        text.ShouldNotContain("premium content");
         response.Headers.Contains(X402Headers.PaymentResponse).ShouldBeTrue();
+
+        // /premium's own success shape (Results.Text("premium content")) declares
+        // Content-Length: 15 up front. FinishAsync's settlement-failed branch discards that body
+        // and writes the 2-byte {} PaymentRequiredResult instead: TestServer tolerates a stale
+        // Content-Length surviving that rewrite, but a real transport (Kestrel) aborts the response
+        // trying to satisfy it — so assert the header itself, not just status and body, or this
+        // test would stay green with the bug present.
+        var declaredLength = response.Content.Headers.ContentLength;
+        (declaredLength is null || declaredLength == body.Length).ShouldBeTrue(
+            $"Content-Length was {declaredLength}, but the refusal body is {body.Length} bytes.");
     }
 
     [Fact]

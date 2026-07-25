@@ -80,6 +80,13 @@ internal sealed partial class X402Middleware(
             var buffering = feature.Buffer!;
             buffering.Discard();
             RestoreOriginalBody(context, feature);
+            // Not Headers.Clear(): this is the propagating twin of FinishAsync's Poisoned branch
+            // and FinishRefusalAsync's own Poisoned branch — same reasoning as both (see their
+            // comments). The endpoint may have already set Content-Length for the body it never
+            // finished writing before the exception hit; left as-is, that stale value survives onto
+            // the short body PaymentRequiredResult/WriteRefusalAsync write below, and a real
+            // transport (unlike TestServer) aborts the response trying to satisfy it.
+            context.Response.ContentLength = null;
             if (feature.Attempt is { } attempt)
             {
                 await new PaymentRequiredResult(attempt.Demand!).ExecuteAsync(context);

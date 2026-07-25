@@ -70,6 +70,49 @@ public sealed class BufferingTests
     }
 
     [Fact]
+    public async Task A_poisoned_buffer_resets_a_stale_content_length_before_rewriting_the_refusal()
+    {
+        // /large-swallowing-with-content-length declares Content-Length up front (the way
+        // Results.Text/Results.Json would) before writing past the cap and swallowing the resulting
+        // exception — reaching X402PaymentProcessor.FinishAsync's own Poisoned branch, exactly like
+        // A_swallowed_capacity_exception_still_settles_at_most_once above. TestServer tolerates a
+        // stale Content-Length surviving the rewrite to the 2-byte {} refusal body; real Kestrel
+        // aborts the response trying to satisfy it — so assert the header itself.
+        await using var server = await PaidServerFixture.StartAsync(
+            configure: options => options.MaxBufferedResponseBytes = 1024);
+        server.Facilitator.Scenario = FakeFacilitatorScenario.SettleFailure;
+
+        var response = await server.PayAsync(
+            "/large-swallowing-with-content-length", KnownAssets.EurcBaseSepolia);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.PaymentRequired);
+        var body = await response.Content.ReadAsByteArrayAsync(TestContext.Current.CancellationToken);
+        var declaredLength = response.Content.Headers.ContentLength;
+        (declaredLength is null || declaredLength == body.Length).ShouldBeTrue(
+            $"Content-Length was {declaredLength}, but the refusal body is {body.Length} bytes.");
+    }
+
+    [Fact]
+    public async Task A_propagated_capacity_exception_resets_a_stale_content_length_too()
+    {
+        // /large-with-content-length does not swallow BufferingSettlementFailedException, so it
+        // propagates out of next(context) and is handled by X402Middleware's own
+        // catch (BufferingSettlementFailedException) block — the M1 site distinct from FinishAsync's
+        // Poisoned branch above, sharing the same stale-Content-Length hazard.
+        await using var server = await PaidServerFixture.StartAsync(
+            configure: options => options.MaxBufferedResponseBytes = 1024);
+        server.Facilitator.Scenario = FakeFacilitatorScenario.SettleFailure;
+
+        var response = await server.PayAsync("/large-with-content-length", KnownAssets.EurcBaseSepolia);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.PaymentRequired);
+        var body = await response.Content.ReadAsByteArrayAsync(TestContext.Current.CancellationToken);
+        var declaredLength = response.Content.Headers.ContentLength;
+        (declaredLength is null || declaredLength == body.Length).ShouldBeTrue(
+            $"Content-Length was {declaredLength}, but the refusal body is {body.Length} bytes.");
+    }
+
+    [Fact]
     public async Task An_ignored_refusal_that_also_overflows_the_buffer_still_gets_a_clean_refusal()
     {
         // /analyze-ignoring-refusal-overflowing stacks two independent endpoint bugs: it ignores

@@ -33,7 +33,10 @@ namespace X402.AspNetCore.Tests;
 /// Routes mounted by default, when <c>routes</c> is not supplied to <see cref="StartAsync"/>:
 /// <c>/free</c> (unpriced), <c>/premium</c> and <c>/boom</c> (EURC 0.010 then USDC 0.011),
 /// <c>/large</c> (same prices, streams 64 KiB), <c>/large-swallowing</c> (same as
-/// <c>/large</c>, but swallows whatever each write throws),
+/// <c>/large</c>, but swallows whatever each write throws), <c>/large-with-content-length</c> and
+/// <c>/large-swallowing-with-content-length</c> (same two shapes again, but each declares
+/// <c>Content-Length</c> up front — for the M1 Content-Length-reset fix, see
+/// <c>PaymentProcessorTests</c>/<c>BufferingTests</c>),
 /// <c>/analyze-ignoring-refusal</c> (deliberately buggy: ignores a gate refusal and serves content
 /// anyway, for <c>PaymentGateTests</c>), and <c>/analyze-ignoring-refusal-overflowing</c>
 /// (ignores a gate refusal AND overflows the buffer in a swallowed broad catch, for
@@ -209,7 +212,9 @@ public sealed class PaidServerFixture : IAsyncDisposable
                                 .Map("/premium", premiumPrices)
                                 .Map("/boom", premiumPrices)
                                 .Map("/large", premiumPrices)
-                                .Map("/large-swallowing", premiumPrices);
+                                .Map("/large-swallowing", premiumPrices)
+                                .Map("/large-with-content-length", premiumPrices)
+                                .Map("/large-swallowing-with-content-length", premiumPrices);
                         });
                     }
 
@@ -223,6 +228,10 @@ public sealed class PaidServerFixture : IAsyncDisposable
                         endpoints.MapGet("/boom", ThrowBoomAsync);
                         endpoints.MapGet("/large", WriteLargeBodyAsync);
                         endpoints.MapGet("/large-swallowing", WriteLargeBodySwallowingExceptionsAsync);
+                        endpoints.MapGet("/large-with-content-length", WriteLargeBodyWithDeclaredContentLengthAsync);
+                        endpoints.MapGet(
+                            "/large-swallowing-with-content-length",
+                            WriteLargeBodyWithDeclaredContentLengthSwallowingExceptionsAsync);
                         endpoints.MapPost("/analyze", AnalyzeAsync);
                         endpoints.MapPost("/by-size", BySizeAsync);
                         endpoints.MapGet("/analyze-ignoring-refusal", IgnoringRefusalAsync);
@@ -361,6 +370,53 @@ public sealed class PaidServerFixture : IAsyncDisposable
     /// </summary>
     private static async Task WriteLargeBodySwallowingExceptionsAsync(HttpContext context)
     {
+        var chunk = new byte[4096];
+        Array.Fill(chunk, (byte)'x');
+        for (var i = 0; i < 16; i++)
+        {
+            try
+            {
+                await context.Response.Body.WriteAsync(chunk, context.RequestAborted);
+            }
+            catch (Exception)
+            {
+                return;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Same as <see cref="WriteLargeBodyAsync"/>, except it declares <c>Content-Length</c> up front
+    /// before writing — the way <c>Results.Text</c>/<c>Results.Json</c> and MVC's own result types
+    /// do, unlike a raw write to <see cref="HttpResponse.Body"/>. Exists for the M1 fix (a rewritten
+    /// refusal must reset a stale <c>Content-Length</c> the discarded response already declared):
+    /// the exception this throws at the cap does not get swallowed, so it propagates out of
+    /// <c>next(context)</c> and is handled by <c>X402Middleware</c>'s own
+    /// <c>catch (BufferingSettlementFailedException)</c> block, not
+    /// <c>X402PaymentProcessor.FinishAsync</c>.
+    /// </summary>
+    private static async Task WriteLargeBodyWithDeclaredContentLengthAsync(HttpContext context)
+    {
+        context.Response.ContentLength = 16 * 4096;
+        var chunk = new byte[4096];
+        Array.Fill(chunk, (byte)'x');
+        for (var i = 0; i < 16; i++)
+        {
+            await context.Response.Body.WriteAsync(chunk, context.RequestAborted);
+        }
+    }
+
+    /// <summary>
+    /// Same as <see cref="WriteLargeBodyWithDeclaredContentLengthAsync"/>, except every write is
+    /// wrapped in a broad catch that swallows whatever it throws — the same pattern as
+    /// <see cref="WriteLargeBodySwallowingExceptionsAsync"/>, but with a declared
+    /// <c>Content-Length</c> so the M1 fix in <c>X402PaymentProcessor.FinishAsync</c>'s own
+    /// <c>Poisoned</c> branch (reached only when the endpoint swallows the exception, exactly as
+    /// here) has something stale to reset.
+    /// </summary>
+    private static async Task WriteLargeBodyWithDeclaredContentLengthSwallowingExceptionsAsync(HttpContext context)
+    {
+        context.Response.ContentLength = 16 * 4096;
         var chunk = new byte[4096];
         Array.Fill(chunk, (byte)'x');
         for (var i = 0; i < 16; i++)
