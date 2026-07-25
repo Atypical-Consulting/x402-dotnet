@@ -34,15 +34,15 @@ public static class TestData
         Asset = asset.Address,
         PayTo = PayeeAddress,
         MaxTimeoutSeconds = 60,
-        // Dictionary<string, string> is not a root type of X402JsonContext (that source-generated
-        // context only covers the protocol's own record types), so this ad-hoc `extra` shape must
-        // serialize through the reflection-based default options instead of X402Json.Options.
+        // Dictionary<string, string> is registered on X402JsonContext (see X402Json.cs) precisely
+        // for this ad-hoc `extra` shape, so this serializes through the same options as every other
+        // protocol object.
         Extra = System.Text.Json.JsonSerializer.SerializeToElement(
             new Dictionary<string, string>
             {
                 ["name"] = asset.Eip712Name,
                 ["version"] = asset.Eip712Version,
-            }, System.Text.Json.JsonSerializerOptions.Default),
+            }, X402Json.Options),
     };
 
     /// <summary>Builds a facilitator request carrying a genuinely signed authorization.</summary>

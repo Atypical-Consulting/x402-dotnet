@@ -16,6 +16,12 @@ public static class X402Json
 
 /// <summary>Source-generated serialisation context for the x402 protocol types.</summary>
 [JsonSourceGenerationOptions(DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
+// Not a protocol type itself: registered because PaymentRequirements.Extra's exact/EVM shape is an
+// ad-hoc { name, version } map (see X402PaymentProcessor.BuildRequirements and
+// TestData.RequirementsFor). Without this, serializing it through X402Json.Options throws
+// NotSupportedException at run time — this is the third time that exact gap has surfaced; register
+// the shape instead of routing around the source-generated context a third time.
+[JsonSerializable(typeof(Dictionary<string, string>))]
 [JsonSerializable(typeof(PaymentRequired))]
 [JsonSerializable(typeof(PaymentRequirements))]
 [JsonSerializable(typeof(PaymentPayload))]

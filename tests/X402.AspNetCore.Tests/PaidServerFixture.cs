@@ -34,7 +34,8 @@ namespace X402.AspNetCore.Tests;
 /// already uses) into a hand-built pipeline that plays the same role
 /// <c>X402Middleware.RunAndSettleAsync</c> will: authorize, buffer, settle, restore the original
 /// response feature. Routes mounted: <c>/free</c> (unpriced), <c>/premium</c> and <c>/boom</c>
-/// (EURC 0.010 then USDC 0.011), <c>/large</c> (same prices, streams 64 KiB).
+/// (EURC 0.010 then USDC 0.011), <c>/large</c> (same prices, streams 64 KiB), and
+/// <c>/large-swallowing</c> (same as <c>/large</c>, but swallows whatever each write throws).
 /// </remarks>
 public sealed class PaidServerFixture : IAsyncDisposable
 {
@@ -53,6 +54,7 @@ public sealed class PaidServerFixture : IAsyncDisposable
         this.logs = logs;
         this.bufferedRequests = bufferedRequests;
         Client = host.GetTestClient();
+        Ledger = host.Services.GetRequiredService<ISettlementLedger>();
     }
 
     /// <summary>An <see cref="HttpClient"/> bound to the hosted server.</summary>
@@ -60,6 +62,13 @@ public sealed class PaidServerFixture : IAsyncDisposable
 
     /// <summary>The in-process facilitator every request is verified and settled against.</summary>
     public FakeFacilitator Facilitator { get; }
+
+    /// <summary>
+    /// The same ledger the engine settles through — resolved from the hosted app's own container,
+    /// not a separate instance. Lets a test seed an in-flight lease directly (see
+    /// <c>An_authorization_being_settled_elsewhere_gets_409</c>) without needing a genuine race.
+    /// </summary>
+    public ISettlementLedger Ledger { get; }
 
     /// <summary>Every payment event recorded so far.</summary>
     public IReadOnlyList<PaymentEvent> Events => sink.Events;
@@ -134,6 +143,9 @@ public sealed class PaidServerFixture : IAsyncDisposable
                             _ => throw new InvalidOperationException("boom"));
 
                         MapPriced(endpoints, "/large", premiumPrices, bufferedRequests, WriteLargeBodyAsync);
+
+                        MapPriced(endpoints, "/large-swallowing", premiumPrices, bufferedRequests,
+                            WriteLargeBodySwallowingExceptionsAsync);
                     });
                 }))
             .Start();
@@ -227,6 +239,29 @@ public sealed class PaidServerFixture : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Same as <see cref="WriteLargeBodyAsync"/>, except every write is wrapped in a broad catch
+    /// that swallows whatever it throws and returns normally — a real streaming endpoint tolerating
+    /// a client disconnect this way is a common pattern, and it must not be able to hide a failed
+    /// cap-crossing settlement from the pipeline (see <see cref="BufferingResponseBodyFeature.Poisoned"/>).
+    /// </summary>
+    private static async Task WriteLargeBodySwallowingExceptionsAsync(HttpContext context)
+    {
+        var chunk = new byte[4096];
+        Array.Fill(chunk, (byte)'x');
+        for (var i = 0; i < 16; i++)
+        {
+            try
+            {
+                await context.Response.Body.WriteAsync(chunk, context.RequestAborted);
+            }
+            catch (Exception)
+            {
+                return;
+            }
+        }
+    }
+
     private static void MapPriced(
         IEndpointRouteBuilder endpoints, string pattern, PriceSet prices, RequestCounter counter,
         Func<HttpContext, Task> handler) =>
@@ -280,11 +315,19 @@ public sealed class PaidServerFixture : IAsyncDisposable
         }
         catch
         {
-            // The endpoint threw before settlement was ever attempted: the authorization was never
-            // used, so release it for a retry rather than leave it stuck as in-flight.
+            // Abandon only when settlement provably never happened. It did, and the ledger already
+            // has its outcome on record, when the buffer overflowed successfully (funds moved) or
+            // was poisoned by a failed cap-crossing settlement that this handler's own broad catch
+            // swallowed before it reached us. The ledger tolerates a mistaken Abandon defensively —
+            // it refuses to erase a completed entry — but that is a backstop, not a licence to call
+            // it when the correct answer is already known here.
+            if (!buffering.Overflowed && !buffering.Poisoned)
+            {
+                await ledger.AbandonAsync(attempt.Identity, context.RequestAborted);
+            }
+
             buffering.Discard();
             context.Features.Set(original);
-            await ledger.AbandonAsync(attempt.Identity, context.RequestAborted);
             if (!context.Response.HasStarted)
             {
                 context.Response.StatusCode = StatusCodes.Status500InternalServerError;
@@ -297,6 +340,19 @@ public sealed class PaidServerFixture : IAsyncDisposable
             // Always restore, whichever path above ran — leaking a buffering feature onto a later
             // request would be a serious, hard-to-diagnose bug.
             context.Features.Set(original);
+        }
+
+        if (buffering.Poisoned)
+        {
+            // BufferingSettlementFailedException was thrown at the cap and swallowed somewhere
+            // inside the handler (a broad catch around writes, tolerating e.g. a client disconnect,
+            // is a common streaming pattern) instead of propagating to the catch above. Consult the
+            // flag directly rather than trust that every handler propagates it: settlement was
+            // attempted and failed, so falling through to SettleAsync below would settle — and
+            // charge — a second time for the same authorization.
+            buffering.Discard();
+            await new PaymentRequiredResult(attempt.Demand!).ExecuteAsync(context);
+            return;
         }
 
         if (buffering.Overflowed)

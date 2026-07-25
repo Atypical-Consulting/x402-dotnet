@@ -1,4 +1,5 @@
 using System.Net;
+using X402.AspNetCore.Idempotency;
 using X402.Assets;
 using X402.Billing;
 using X402.Protocol;
@@ -163,6 +164,23 @@ public sealed class PaymentProcessorTests : IAsyncLifetime
         second.StatusCode.ShouldBe(HttpStatusCode.OK);
         server.Facilitator.HasDoubleSettled.ShouldBeFalse();
         server.Facilitator.SettleCallCount.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task An_authorization_being_settled_elsewhere_gets_409()
+    {
+        // No genuine race needed: the ledger is resolvable from the same container the engine
+        // settles through, and the identity AuthorizeAsync computes is deterministic from the
+        // payload. Seed an in-flight lease for it directly, then present the same authorization.
+        var payload = await server.SignFor("/premium", KnownAssets.EurcBaseSepolia);
+        var authorization = payload.AsExactEvm().Authorization;
+        var identity = new PaymentIdentity(
+            payload.Accepted.Network, payload.Accepted.Asset, authorization.Nonce);
+        await server.Ledger.AcquireAsync(identity, TestContext.Current.CancellationToken);
+
+        var response = await server.SendAsync("/premium", payload);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
     }
 
     [Fact]

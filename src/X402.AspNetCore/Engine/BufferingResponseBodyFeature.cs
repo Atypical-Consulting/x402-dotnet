@@ -7,10 +7,15 @@ namespace X402.AspNetCore.Engine;
 /// Holds a paid response in memory until settlement decides whether it may be delivered.
 /// </summary>
 /// <remarks>
-/// Beyond <c>MaxBufferedResponseBytes</c> the buffer gives up: it asks the engine to settle
-/// immediately, flushes what it holds and streams the rest. Past that point a failed settlement
-/// can no longer withhold the content — the documented trade-off of ADR D5, which keeps large
-/// downloads and server-sent events possible.
+/// Beyond <c>MaxBufferedResponseBytes</c> the write that crosses the cap forces the engine to
+/// settle right there, before any byte of the response has left the process — so a settlement that
+/// fails exactly at that moment is still caught cleanly; nothing has been streamed yet, and the
+/// request can still be refused (see <see cref="Poisoned"/>). Only once settlement *succeeds* at
+/// the cap are the held bytes flushed and every later byte streamed straight through. The real
+/// trade-off of ADR D5 is therefore not that a failed settlement can no longer withhold content —
+/// it can, right up to the cap — but that the withhold-or-deliver decision is made once, on
+/// whatever content the buffer holds at that instant, and is never reconsidered as more content is
+/// produced. That is what keeps large downloads and server-sent events possible.
 /// </remarks>
 internal sealed class BufferingResponseBodyFeature : IHttpResponseBodyFeature
 {
@@ -34,14 +39,47 @@ internal sealed class BufferingResponseBodyFeature : IHttpResponseBodyFeature
     /// <summary>Whether the response has already started streaming to the client.</summary>
     public bool Overflowed { get; private set; }
 
+    /// <summary>
+    /// Set once settlement was attempted — and failed — at the instant the cap was crossed. A
+    /// terminal state: it is never cleared. Every write attempted after this point fails without
+    /// invoking settlement again, and the content held up to that point is gone (see
+    /// <see cref="Discard"/>). Consulted directly by the pipeline as well as by this class, because
+    /// an endpoint that wraps its own writes in a broad catch (a common pattern for tolerating a
+    /// client disconnect) can swallow the exception this state causes and return normally, and the
+    /// pipeline must not then fall through into settling — and paying — a second time.
+    /// </summary>
+    public bool Poisoned { get; private set; }
+
     /// <summary>Number of bytes currently held.</summary>
     public long BufferedLength => buffer?.Length ?? 0;
 
-    public Stream Stream => Overflowed ? inner.Stream : CapacityChecked();
+    public Stream Stream
+    {
+        get
+        {
+            if (Poisoned)
+            {
+                throw new BufferingSettlementFailedException();
+            }
 
-    public PipeWriter Writer => Overflowed
-        ? inner.Writer
-        : writer ??= PipeWriter.Create(CapacityChecked(), new StreamPipeWriterOptions(leaveOpen: true));
+            return Overflowed ? inner.Stream : CapacityChecked();
+        }
+    }
+
+    public PipeWriter Writer
+    {
+        get
+        {
+            if (Poisoned)
+            {
+                throw new BufferingSettlementFailedException();
+            }
+
+            return Overflowed
+                ? inner.Writer
+                : writer ??= PipeWriter.Create(CapacityChecked(), new StreamPipeWriterOptions(leaveOpen: true));
+        }
+    }
 
     public Task CompleteAsync() => Overflowed ? inner.CompleteAsync() : Task.CompletedTask;
 
@@ -96,6 +134,14 @@ internal sealed class BufferingResponseBodyFeature : IHttpResponseBodyFeature
     /// </remarks>
     internal async Task<bool> CheckCapacityAsync(CancellationToken cancellationToken)
     {
+        // Poisoned is terminal: never re-invoke settlement once it has already been attempted and
+        // failed here, however this got called again (a stale Stream/Writer reference held across
+        // the failing write, or SendFileAsync's own path below).
+        if (Poisoned)
+        {
+            return false;
+        }
+
         if (Overflowed || buffer is null || buffer.Length <= cap)
         {
             return true;
@@ -104,6 +150,12 @@ internal sealed class BufferingResponseBodyFeature : IHttpResponseBodyFeature
         var settled = await onOverflowAsync(cancellationToken);
         if (!settled)
         {
+            // Settlement was genuinely attempted here and failed: record that permanently before
+            // returning, not just for this call. Discarding now — rather than leaving the buffer
+            // to be discarded later by whoever observes the failure — means a caller who ignores
+            // the false/exception cannot go on appending to it either.
+            Poisoned = true;
+            Discard();
             return false;
         }
 
@@ -122,7 +174,11 @@ internal sealed class BufferingResponseBodyFeature : IHttpResponseBodyFeature
     private async Task OverflowThenAsync(
         Func<CancellationToken, Task> action, CancellationToken cancellationToken)
     {
-        await CheckCapacityAsync(cancellationToken);
+        if (!await CheckCapacityAsync(cancellationToken))
+        {
+            throw new BufferingSettlementFailedException();
+        }
+
         await action(cancellationToken);
     }
 

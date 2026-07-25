@@ -36,17 +36,37 @@ public sealed class BufferingTests
     }
 
     [Fact]
-    public async Task Beyond_the_cap_a_failed_settlement_can_no_longer_withhold_the_content()
+    public async Task A_settlement_failing_exactly_at_the_cap_is_still_refused_before_anything_streams()
     {
-        // The assumed trade-off of D5, verified explicitly so it stays a choice, not a surprise.
+        // The write that first crosses the cap is what forces settlement, and it fails before that
+        // write — or any before it — reaches the real network: nothing has left the process, so the
+        // whole response can still be refused. The trade-off of D5 is narrower than "a failed
+        // settlement can no longer withhold content" — see BufferingResponseBodyFeature's remarks.
         await using var server = await PaidServerFixture.StartAsync(
             configure: options => options.MaxBufferedResponseBytes = 1024);
         server.Facilitator.Scenario = FakeFacilitatorScenario.SettleFailure;
 
         var response = await server.PayAsync("/large", KnownAssets.EurcBaseSepolia);
 
-        // Settlement fails before anything is written out: it can still be refused. The favorable case.
         response.StatusCode.ShouldBe(HttpStatusCode.PaymentRequired);
+    }
+
+    [Fact]
+    public async Task A_swallowed_capacity_exception_still_settles_at_most_once()
+    {
+        // /large-swallowing wraps every write in a broad catch and returns normally instead of
+        // letting BufferingSettlementFailedException propagate — a real streaming endpoint
+        // tolerating a client disconnect this way is a common pattern. The pipeline must still
+        // notice (via BufferingResponseBodyFeature.Poisoned) rather than fall through to its own
+        // SettleAsync call and settle — and charge — the same authorization a second time.
+        await using var server = await PaidServerFixture.StartAsync(
+            configure: options => options.MaxBufferedResponseBytes = 1024);
+        server.Facilitator.Scenario = FakeFacilitatorScenario.SettleFailure;
+
+        var response = await server.PayAsync("/large-swallowing", KnownAssets.EurcBaseSepolia);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.PaymentRequired);
+        server.Facilitator.SettleCallCount.ShouldBe(1);
     }
 
     [Fact]

@@ -168,18 +168,15 @@ internal sealed class X402PaymentProcessor(
         Asset = price.Asset.Address,
         PayTo = settings.PayTo,
         MaxTimeoutSeconds = settings.MaxTimeoutSeconds,
-        // The token's EIP-712 domain: without it the payer cannot sign correctly. A plain
-        // Dictionary<string, string> is not a root type of X402JsonContext (that source-generated
-        // context only covers the protocol's own record types), so serializing it through
-        // X402Json.Options throws NotSupportedException at run time — the same gap TestData hit
-        // building requirements for tests. Use the reflection-based default options for this one
-        // ad-hoc shape instead.
+        // The token's EIP-712 domain: without it the payer cannot sign correctly. Dictionary<string,
+        // string> is registered on X402JsonContext (see X402Json.cs) precisely for this ad-hoc
+        // shape, so this goes through the same source-generated options as every other protocol object.
         Extra = System.Text.Json.JsonSerializer.SerializeToElement(
             new Dictionary<string, string>
             {
                 ["name"] = price.Asset.Eip712Name,
                 ["version"] = price.Asset.Eip712Version,
-            }, System.Text.Json.JsonSerializerOptions.Default),
+            }, X402.Json.X402Json.Options),
     };
 
     private (PaymentRequirements Requirements, AssetDescriptor Asset)? Match(
