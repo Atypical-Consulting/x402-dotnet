@@ -43,10 +43,20 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
-  # Packs and publishes the three packages for the release just created above. Guarded on the
-  # NUGET_API_KEY secret being set (job-level env, read from a step-level `if`, since a step's own
-  # `if` cannot see its own step-level env) so this stays a clean no-op until a maintainer adds it
-  # — see the "verify rather than assume" note in task 18's report: the secret does not exist yet.
+  # Packs and publishes the three packages for the release just created above, via NuGet Trusted
+  # Publishing: the login step exchanges the GitHub OIDC token (needs `id-token: write` below) for
+  # a short-lived key valid ~1h, so no long-lived secret is stored anywhere.
+  #
+  # Guarded on NUGET_USER (job-level env, read from a step-level `if`, since a step's own `if`
+  # cannot see its own step-level env). The previous guard read NUGET_API_KEY and its comment
+  # claimed "the secret does not exist yet" — that was verified with `gh secret list`, which shows
+  # REPOSITORY secrets only. The organization has carried a NUGET_API_KEY since 2026-02-28
+  # (`gh api repos/{owner}/{repo}/actions/organization-secrets`), so the guard resolved and the
+  # push was armed, not a no-op. Measured before this change: repo secrets 0, repo variables 0,
+  # org variables 0, org secrets = [NUGET_API_KEY]. NUGET_USER is therefore genuinely absent and
+  # the no-op this job always claimed to have is now real.
+  #
+  # Re-verify with the API, never with `gh secret list`, before trusting this guard again.
   publish:
     needs: release-please
     if: ${{ needs.release-please.outputs.release_created == 'true' }}
@@ -54,8 +64,9 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: write # attach the .nupkg files to the release created above
+      id-token: write # request the GitHub OIDC token for NuGet Trusted Publishing
     env:
-      NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+      NUGET_USER: ${{ secrets.NUGET_USER }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -75,11 +86,19 @@ jobs:
       - name: Pack
         run: dotnet pack --no-build --configuration Release --output ./nupkg
 
+      # Keep login adjacent to the push so the ~1h key doesn't expire before it's used.
+      - name: NuGet login (OIDC -> short-lived key)
+        id: login
+        if: ${{ env.NUGET_USER != '' }}
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
+        with:
+          user: ${{ env.NUGET_USER }}
+
       - name: Push to NuGet.org
-        if: ${{ env.NUGET_API_KEY != '' }}
+        if: ${{ env.NUGET_USER != '' }}
         run: |
           dotnet nuget push "./nupkg/*.nupkg" \
-            --api-key "$NUGET_API_KEY" \
+            --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" \
             --source https://api.nuget.org/v3/index.json \
             --skip-duplicate
 
