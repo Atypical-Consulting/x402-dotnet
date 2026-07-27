@@ -1,7 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <PackageId>X402.AspNetCore</PackageId>
+    <!-- `X402.AspNetCore` is the one id in the family still unclaimed on nuget.org, but the three
+         are renamed together: shipping one bare id next to two prefixed ones would be incoherent,
+         and the bare id is exactly what an accidental release would have squatted. See ADR 0004. -->
+    <PackageId>Atypical.X402.AspNetCore</PackageId>
     <RootNamespace>X402.AspNetCore</RootNamespace>
     <Description>ASP.NET Core configuration and service registration for accepting x402 v2 payments: strongly-typed options, asset resolution, and start-up validation that fails the host before the first payment.</Description>
   </PropertyGroup>

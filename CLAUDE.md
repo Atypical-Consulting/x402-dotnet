@@ -22,6 +22,12 @@ X402.AspNetCore  server middleware, imperative gate, facilitator client, idempot
 X402.Client      EIP-3009 signing, the paying DelegatingHandler, per-asset spending limits
 ```
 
+**Project names and package ids differ on purpose.** The projects, namespaces and assemblies are
+`X402.*`; the published ids are `Atypical.X402.*`. The bare `X402.Core` and `X402.Client` ids on
+nuget.org belong to an unrelated implementation ([michielpost/x402-dotnet](https://github.com/michielpost/x402-dotnet)).
+Never set a `PackageId` back to a bare `X402.*` — see
+[ADR 0004](docs/adr/0004-prefix-the-package-ids-with-atypical.md).
+
 `X402.TestKit` is a fourth, unpublished project: `FakeFacilitator` performs *real* EIP-712
 signature recovery and validity-window/amount/recipient checks with no on-chain ledger, which
 makes tests against it cryptographically meaningful — see "What this can't prove" below for the

@@ -1,7 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <PackageId>X402.Client</PackageId>
+    <!-- See ADR 0004: the bare `X402.Client` id belongs to another author on nuget.org. -->
+    <PackageId>Atypical.X402.Client</PackageId>
     <RootNamespace>X402.Client</RootNamespace>
     <Description>Client-side signing for the x402 v2 payment protocol: builds and signs EIP-3009 transferWithAuthorization typed data.</Description>
   </PropertyGroup>
