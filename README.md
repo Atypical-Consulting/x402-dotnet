@@ -24,9 +24,9 @@
 [![CI](https://github.com/Atypical-Consulting/x402-dotnet/actions/workflows/ci.yml/badge.svg)](https://github.com/Atypical-Consulting/x402-dotnet/actions/workflows/ci.yml)
 
 <!-- Rangée 4 — Distribution (trois paquets, une version partagée) -->
-[![NuGet X402.Core](https://img.shields.io/nuget/v/X402.Core?logo=nuget&label=X402.Core&color=004880)](https://www.nuget.org/packages/X402.Core/)
-[![NuGet X402.AspNetCore](https://img.shields.io/nuget/v/X402.AspNetCore?logo=nuget&label=X402.AspNetCore&color=004880)](https://www.nuget.org/packages/X402.AspNetCore/)
-[![NuGet X402.Client](https://img.shields.io/nuget/v/X402.Client?logo=nuget&label=X402.Client&color=004880)](https://www.nuget.org/packages/X402.Client/)
+[![NuGet Atypical.X402.Core](https://img.shields.io/nuget/v/Atypical.X402.Core?logo=nuget&label=Atypical.X402.Core&color=004880)](https://www.nuget.org/packages/Atypical.X402.Core/)
+[![NuGet Atypical.X402.AspNetCore](https://img.shields.io/nuget/v/Atypical.X402.AspNetCore?logo=nuget&label=Atypical.X402.AspNetCore&color=004880)](https://www.nuget.org/packages/Atypical.X402.AspNetCore/)
+[![NuGet Atypical.X402.Client](https://img.shields.io/nuget/v/Atypical.X402.Client?logo=nuget&label=Atypical.X402.Client&color=004880)](https://www.nuget.org/packages/Atypical.X402.Client/)
 
 <!-- Rangée 5 — Docs (pas de site hébergé ; les ADR font office de documentation d'architecture) -->
 [![Docs: ADRs](https://img.shields.io/badge/docs-architecture_decisions-3245b8)](docs/adr)
@@ -84,12 +84,17 @@ says them plainly instead:
 ## Install
 
 ```bash
-dotnet add package X402.AspNetCore   # accept payments in an ASP.NET Core app
-dotnet add package X402.Client       # pay for HTTP requests from any .NET client
+dotnet add package Atypical.X402.AspNetCore   # accept payments in an ASP.NET Core app
+dotnet add package Atypical.X402.Client       # pay for HTTP requests from any .NET client
 ```
 
-`X402.Core` (protocol types, transport codec) is a transitive dependency of both and is published
-separately for tooling that only needs the wire format.
+`Atypical.X402.Core` (protocol types, transport codec) is a transitive dependency of both and is
+published separately for tooling that only needs the wire format.
+
+> The packages are prefixed `Atypical.`; the namespaces are not — you still write `using X402;`,
+> `using X402.Client;` and `using X402.AspNetCore;`. The unprefixed `X402.*` ids on nuget.org
+> belong to a different `x402` implementation ([michielpost/x402-dotnet](https://github.com/michielpost/x402-dotnet)),
+> which this project is unrelated to. See [ADR 0004](docs/adr/0004-prefix-the-package-ids-with-atypical.md).
 
 ## Quick Start
 
@@ -100,7 +105,7 @@ anything well-formed without touching a network.
 
 ```bash
 dotnet new webapi -n PaidApi && cd PaidApi
-dotnet add package X402.AspNetCore
+dotnet add package Atypical.X402.AspNetCore
 ```
 
 **2. Configure who gets paid, on which network, in which assets** (`appsettings.json`):

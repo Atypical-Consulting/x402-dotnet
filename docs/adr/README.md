@@ -8,3 +8,4 @@ never rewritten once accepted — superseded decisions get a new record that lin
 | [0001](0001-record-architecture-decisions.md) | Record architecture decisions | Accepted |
 | [0002](0002-multi-asset-with-eurc-as-a-first-class-citizen.md) | Multi-asset settlement, with EURC as a first-class citizen | Accepted |
 | [0003](0003-the-server-never-holds-a-signing-key.md) | The server never holds a signing key | Accepted |
+| [0004](0004-prefix-the-package-ids-with-atypical.md) | Prefix the package ids with `Atypical.` | Accepted |

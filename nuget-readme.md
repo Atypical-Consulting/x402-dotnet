@@ -4,6 +4,10 @@ The .NET implementation of the x402 v2 payment protocol. EURC and USDC are both 
 settlement assets on Base, euro offered first — no reference x402 SDK (TypeScript, Python, Go)
 ships a euro-denominated asset today.
 
+Packages: `Atypical.X402.AspNetCore` (accept payments), `Atypical.X402.Client` (pay for requests),
+`Atypical.X402.Core` (protocol types, transitive). The namespaces are unprefixed — `using X402;`,
+`using X402.Client;`, `using X402.AspNetCore;`.
+
 - **Non-custodial by construction.** `X402.AspNetCore` references no signing library and
   `X402Options` exposes no key, secret or mnemonic property.
 - **EURC support is this library's property, not any facilitator's.** Whether a given facilitator

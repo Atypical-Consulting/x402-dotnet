@@ -48,8 +48,10 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      id-token: write # request the GitHub OIDC token for NuGet Trusted Publishing
     env:
-      NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+      NUGET_USER: ${{ secrets.NUGET_USER }}
     steps:
       - name: Download packages
         uses: actions/download-artifact@v7
@@ -62,14 +64,27 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      # No-ops until a maintainer sets the NUGET_API_KEY secret (confirmed absent at the time this
-      # workflow was written). Job-level env, read from the step's own `if`: a step-level env is
-      # not visible to that same step's `if` conditional.
+      # Trusted Publishing (OIDC): no long-lived secret. Job-level env, read from the step's own
+      # `if`: a step-level env is not visible to that same step's `if` conditional.
+      #
+      # This guard used to read NUGET_API_KEY and claim the secret was "confirmed absent" — a
+      # conclusion drawn from `gh secret list`, which shows REPOSITORY secrets only. An
+      # organization NUGET_API_KEY has existed since 2026-02-28, so the guard resolved and this
+      # push was armed. Both publish paths (here and release-please.yml) had to move together;
+      # fixing only one would have left the other live. See release-please.yml for the full
+      # measurement.
+      - name: NuGet login (OIDC -> short-lived key)
+        id: login
+        if: ${{ env.NUGET_USER != '' }}
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
+        with:
+          user: ${{ env.NUGET_USER }}
+
       - name: Push to NuGet.org
-        if: ${{ env.NUGET_API_KEY != '' }}
+        if: ${{ env.NUGET_USER != '' }}
         run: |
           dotnet nuget push "./nupkg/*.nupkg" \
-            --api-key "$NUGET_API_KEY" \
+            --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" \
             --source https://api.nuget.org/v3/index.json \
             --skip-duplicate
 

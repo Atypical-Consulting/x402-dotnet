@@ -1,7 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <PackageId>X402.Core</PackageId>
+    <!-- The bare `X402.Core` id belongs to another author on nuget.org (owner `mailpost`,
+         github.com/michielpost/x402-dotnet). Namespaces and assembly names are deliberately
+         NOT renamed — only the distribution identity is. See ADR 0004. -->
+    <PackageId>Atypical.X402.Core</PackageId>
     <RootNamespace>X402</RootNamespace>
     <Description>Core types, JSON contracts and transport codec for the x402 v2 payment protocol. Transport-agnostic and dependency-free.</Description>
   </PropertyGroup>
