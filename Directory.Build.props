@@ -13,8 +13,8 @@
   <!-- Version et InformationalVersion sont pilotées par release-please (tâche 18).
        Ne pas les éditer à la main, ne pas retirer les marqueurs x-release-please-version. -->
   <PropertyGroup>
-    <Version>0.1.0</Version> <!-- x-release-please-version -->
-    <InformationalVersion>0.1.0</InformationalVersion> <!-- x-release-please-version -->
+    <Version>0.2.0</Version> <!-- x-release-please-version -->
+    <InformationalVersion>0.2.0</InformationalVersion> <!-- x-release-please-version -->
     <Authors>Philippe Matray</Authors>
     <Company>Atypical Consulting</Company>
     <Copyright>Copyright (c) 2026 Atypical Consulting / Philippe Matray</Copyright>
