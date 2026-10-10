@@ -23,7 +23,7 @@
     <!-- Hosts the fake facilitator on an in-memory TestServer; not part of the
          Microsoft.AspNetCore.App shared framework, so it needs an explicit version. -->
     <PackageVersion Include="Microsoft.AspNetCore.TestHost" Version="10.0.12" />
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
     <PackageVersion Include="Shouldly" Version="4.3.0" />
     <PackageVersion Include="coverlet.collector" Version="10.1.0" />
     <PackageVersion Include="xunit.v3" Version="3.2.2" />
