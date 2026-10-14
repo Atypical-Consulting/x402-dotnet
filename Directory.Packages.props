@@ -10,7 +10,7 @@
     <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.13" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.13" />
     <PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.13" />
-    <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.10.0" />
+    <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.11.0" />
     <PackageVersion Include="Nethereum.Signer.EIP712" Version="6.1.0" />
     <!-- Transitive dependency of Nethereum.Signer.EIP712, pinned above its resolved 11.0.2 default
          to clear GHSA-5crp-9r3c-p9vr (NU1903, a build error here since warnings are errors). -->
