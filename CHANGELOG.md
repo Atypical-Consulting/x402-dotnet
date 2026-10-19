@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.2](https://github.com/Atypical-Consulting/x402-dotnet/compare/v0.1.1...v0.1.2) (2026-10-19)
+
+
+### Bug Fixes
+
+* **aspnetcore:** normalise a null settle transaction to "" before storing and re-encoding it ([#32](https://github.com/Atypical-Consulting/x402-dotnet/issues/32)) ([#43](https://github.com/Atypical-Consulting/x402-dotnet/issues/43)) ([cf948e0](https://github.com/Atypical-Consulting/x402-dotnet/commit/cf948e09a38274256a4108daaf301e9993019fda))
+
+
+### Refactor
+
+* **aspnetcore:** make RecordAsync's resource parameter non-nullable and drop its Stryker suppression ([#34](https://github.com/Atypical-Consulting/x402-dotnet/issues/34)) ([#46](https://github.com/Atypical-Consulting/x402-dotnet/issues/46)) ([c9f6ce2](https://github.com/Atypical-Consulting/x402-dotnet/commit/c9f6ce29410c3ecb56b1e8d6053a0d95c92e8002))
+
 ## [0.1.1](https://github.com/Atypical-Consulting/x402-dotnet/compare/v0.1.0...v0.1.1) (2026-10-19)
 
 
