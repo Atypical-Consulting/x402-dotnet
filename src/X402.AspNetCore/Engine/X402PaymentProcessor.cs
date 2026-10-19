@@ -204,7 +204,7 @@ internal sealed class X402PaymentProcessor(
             attempt.SettlementError = X402ErrorReason.UnexpectedSettleError;
             await ledger.AbandonAsync(attempt.Identity, cancellationToken);
             await RecordAsync(PaymentEventStatus.SettlementFailed, attempt.Requirements!,
-                attempt.Demand?.Resource, attempt.Payer, X402ErrorReason.UnexpectedSettleError,
+                attempt.Demand!.Resource, attempt.Payer, X402ErrorReason.UnexpectedSettleError,
                 cancellationToken);
             return false;
         }
@@ -226,7 +226,7 @@ internal sealed class X402PaymentProcessor(
 
         await RecordAsync(
             settle.Success ? PaymentEventStatus.Settled : PaymentEventStatus.SettlementFailed,
-            attempt.Requirements!, attempt.Demand?.Resource, settle.Payer ?? attempt.Payer,
+            attempt.Requirements!, attempt.Demand!.Resource, settle.Payer ?? attempt.Payer,
             settle.Success ? null : settle.ErrorReason, cancellationToken,
             settle.Transaction);
 
@@ -479,7 +479,7 @@ internal sealed class X402PaymentProcessor(
     /// undo a payment that has already settled on-chain (see <see cref="IPaymentEventSink"/>).
     /// </summary>
     private async Task RecordAsync(
-        PaymentEventStatus status, PaymentRequirements requirements, ResourceInfo? resource,
+        PaymentEventStatus status, PaymentRequirements requirements, ResourceInfo resource,
         string? payer, string? failureReason, CancellationToken cancellationToken,
         string? transaction = null)
     {
@@ -490,8 +490,7 @@ internal sealed class X402PaymentProcessor(
                 Timestamp = time.GetUtcNow(),
                 // The resource is the URL that was paid for, not the payee address: PayTo already
                 // has its own field below.
-                // Stryker disable once String : PaymentAttempt.Accepted and AlreadySettled, the only attempts that settle, always set Demand
-                Resource = resource?.Url ?? "",
+                Resource = resource.Url,
                 Amount = requirements.Amount,
                 Asset = requirements.Asset,
                 Network = requirements.Network,
