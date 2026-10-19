@@ -49,6 +49,27 @@ jobs:
             ./nupkg/*.nupkg
             ./nupkg/*.snupkg
 
+  # The on-chain suite (tests/X402.OnChain.Tests) needs Docker and outbound HTTPS to a Base
+  # Sepolia RPC: it forks the chain in an Anvil container and settles against Circle's real
+  # FiatToken. It is opt-in (X402_ONCHAIN=1), so `build`'s own Test step reports it as skipped and
+  # stays offline; this job runs it, in parallel with `build`.
+  onchain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      X402_ONCHAIN: "1"
+      X402_BASE_SEPOLIA_RPC_URL: ${{ secrets.BASE_SEPOLIA_RPC_URL || 'https://sepolia.base.org' }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: On-chain tests (Anvil fork of Base Sepolia)
+        run: dotnet test --project tests/X402.OnChain.Tests --configuration Release --verbosity normal
+
   # Publishes the three packages to NuGet.org for a manually pushed v* tag (e.g. a hotfix tagged
   # by hand). release-please.yml's own `publish` job is the primary path for a release-please
   # release — see its comment for why a release-please-created tag can't rely on this trigger
