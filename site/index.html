@@ -14,6 +14,7 @@
 <link rel="preload" href="fonts/archivo-800.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/barlow-400.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="style.css">
+<script type="module" src="site.js"></script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -26,6 +27,8 @@
       <a href="#packages">Packages</a>
       <a href="#quick-start">Quick start</a>
       <a href="#limits">Limits</a>
+      <a class="keep" href="docs/">Guides</a>
+      <a class="keep" href="docs/api/">API</a>
       <a class="gh" href="https://github.com/Atypical-Consulting/x402-dotnet">GitHub</a>
     </nav>
   </div>
@@ -170,7 +173,7 @@
       </div>
       <div>
         <h3>Why the deviation.</h3>
-        <p>The original brief specified USDC alone. Going multi-asset from the start, euro first, was a deliberate decision recorded in <a href="https://github.com/Atypical-Consulting/x402-dotnet/blob/main/docs/adr/0002-multi-asset-with-eurc-as-a-first-class-citizen.md">ADR 0002</a>.</p>
+        <p>The original brief specified USDC alone. Going multi-asset from the start, euro first, was a deliberate decision recorded in <a href="docs/adr/0002-multi-asset-with-eurc-as-a-first-class-citizen.html">ADR 0002</a>.</p>
       </div>
     </div>
   </div>
@@ -200,7 +203,8 @@
         </tr>
       </tbody>
     </table>
-    <p class="note">The package ids carry the <code>Atypical.</code> prefix; the namespaces do not. You still write <code>using X402;</code>, <code>using X402.Client;</code> and <code>using X402.AspNetCore;</code>. The bare <code>X402.*</code> ids on nuget.org belong to an <a href="https://github.com/michielpost/x402-dotnet">unrelated implementation</a> (<a href="https://github.com/Atypical-Consulting/x402-dotnet/blob/main/docs/adr/0004-prefix-the-package-ids-with-atypical.md">ADR 0004</a>).</p>
+    <p class="note">The package ids carry the <code>Atypical.</code> prefix; the namespaces do not. You still write <code>using X402;</code>, <code>using X402.Client;</code> and <code>using X402.AspNetCore;</code>. The bare <code>X402.*</code> ids on nuget.org belong to an <a href="https://github.com/michielpost/x402-dotnet">unrelated implementation</a> (<a href="docs/adr/0004-prefix-the-package-ids-with-atypical.html">ADR 0004</a>).</p>
+    <p class="more"><a href="docs/api/">Browse the API reference</a>, generated from the same XML documentation the packages ship.</p>
   </div>
 </section>
 
@@ -213,7 +217,7 @@
       <li>
         <div>
           <h3>Create an API and add the server package</h3>
-<pre><code>dotnet new webapi -n PaidApi &amp;&amp; cd PaidApi
+<pre><code class="language-bash">dotnet new webapi -n PaidApi &amp;&amp; cd PaidApi
 dotnet add package Atypical.X402.AspNetCore</code></pre>
         </div>
       </li>
@@ -221,7 +225,7 @@ dotnet add package Atypical.X402.AspNetCore</code></pre>
         <div>
           <h3>Say who gets paid, on which network, in which assets</h3>
           <p class="file">appsettings.json</p>
-<pre><code>{
+<pre><code class="language-json">{
   "X402": {
     "PayTo": "0x209693Bc6afc0C5328bA36FaF03C514EF312287C",
     "Network": "eip155:84532",
@@ -236,7 +240,7 @@ dotnet add package Atypical.X402.AspNetCore</code></pre>
           <h3>Register the pipeline and price a route</h3>
           <p>Pricing a route in an asset the server has not configured throws from <code>UseX402</code> at start-up, before the host accepts a request.</p>
           <p class="file">Program.cs</p>
-<pre><code>using X402.AspNetCore.DependencyInjection;
+<pre><code class="language-csharp">using X402.AspNetCore.DependencyInjection;
 using X402.Assets;
 using X402.Pricing;
 
@@ -255,8 +259,8 @@ app.Run();</code></pre>
         <div>
           <h3>Pay for it from any .NET client</h3>
           <p>The signer is the only place a key exists. Bring your own <code>IPaymentSigner</code> for an HSM or a KMS.</p>
-<pre><code>dotnet add package Atypical.X402.Client</code></pre>
-<pre><code>using Microsoft.Extensions.DependencyInjection;
+<pre><code class="language-bash">dotnet add package Atypical.X402.Client</code></pre>
+<pre><code class="language-csharp">using Microsoft.Extensions.DependencyInjection;
 using X402.Assets;
 using X402.Client;
 using X402.Client.DependencyInjection;
@@ -281,15 +285,16 @@ var http = services.BuildServiceProvider()
 
 try
 {
-    var response = await http.GetAsync("/weather"); <span class="c">// 402 -&gt; sign -&gt; replay -&gt; 200, if the wallet can pay</span>
+    var response = await http.GetAsync("/weather"); // 402 -&gt; sign -&gt; replay -&gt; 200, if the wallet can pay
 }
 catch (PaymentRejectedException)
 {
-    <span class="c">// Expected here with a fresh, unfunded wallet — the facilitator refuses settlement. Step 4</span>
-    <span class="c">// above is where a reader actually watching this succeed should start; see</span>
-    <span class="c">// samples/README.md#running-fully-offline for the real, unedited output.</span>
+    // Expected here with a fresh, unfunded wallet — the facilitator refuses settlement. Step 4
+    // above is where a reader actually watching this succeed should start; see
+    // samples/README.md#running-fully-offline for the real, unedited output.
 }</code></pre>
           <p class="note">"Step 4" in that comment refers to the README's offline run. The runnable <a href="https://github.com/Atypical-Consulting/x402-dotnet/tree/main/samples">samples</a>, <code>PaidApi</code> and <code>PayingAgent</code>, add dynamic per-request pricing, the facilitator probe, and real, unedited console output from actual runs.</p>
+          <p class="more"><a href="docs/guides/getting-started.html">Continue with the getting-started guide</a>, then <a href="docs/guides/protecting-endpoints.html">protecting endpoints</a> and <a href="docs/guides/paying-client.html">the paying client</a>.</p>
         </div>
       </li>
     </ol>
@@ -305,7 +310,8 @@ catch (PaymentRejectedException)
     <ul class="facts">
       <li><code>Atypical.X402.AspNetCore</code> references no signing library.</li>
       <li><code>X402Options</code> exposes no key, secret or mnemonic property, so no operator can configure custody by accident. A test asserts that none appears.</li>
-      <li>Gas sponsoring, batching and custody are facilitator concerns. Adding a signing dependency to the server package would supersede <a href="https://github.com/Atypical-Consulting/x402-dotnet/blob/main/docs/adr/0003-the-server-never-holds-a-signing-key.md">ADR 0003</a>; it must not happen quietly.</li>
+      <li>Gas sponsoring, batching and custody are facilitator concerns. Adding a signing dependency to the server package would supersede <a href="docs/adr/0003-the-server-never-holds-a-signing-key.html">ADR 0003</a>; it must not happen quietly.</li>
+      <li><a href="docs/guides/security.html">The security model, in full</a></li>
     </ul>
   </div>
 </section>
@@ -332,6 +338,7 @@ catch (PaymentRejectedException)
         <p><code>TestServer</code> tolerates wire-level inconsistencies, such as a stale <code>Content-Length</code>, that a real Kestrel connection rejects. One such defect was found and fixed; the same blind spot could still hide an equivalent one elsewhere in the suite.</p>
       </li>
     </ul>
+    <p class="more"><a href="docs/guides/limits.html">Every limit, with the settlement and replay rules behind it</a></p>
   </div>
 </section>
 
@@ -340,10 +347,10 @@ catch (PaymentRejectedException)
     <h2>Decisions on record</h2>
     <p class="lede">Every choice that departs from the obvious reading of a requirement is written down as an architecture decision record.</p>
     <ul class="adrs">
-      <li><a href="https://github.com/Atypical-Consulting/x402-dotnet/blob/main/docs/adr/0002-multi-asset-with-eurc-as-a-first-class-citizen.md"><span class="n">0002</span><span class="t">Multi-asset settlement, with EURC as a first-class citizen<span class="d">Why a list of assets instead of one, and why no conversion.</span></span></a></li>
-      <li><a href="https://github.com/Atypical-Consulting/x402-dotnet/blob/main/docs/adr/0003-the-server-never-holds-a-signing-key.md"><span class="n">0003</span><span class="t">The server never holds a signing key<span class="d">Custody stays out of the server, structurally.</span></span></a></li>
-      <li><a href="https://github.com/Atypical-Consulting/x402-dotnet/blob/main/docs/adr/0004-prefix-the-package-ids-with-atypical.md"><span class="n">0004</span><span class="t">Prefix the package ids with Atypical.<span class="d">Why the NuGet ids and the namespaces differ.</span></span></a></li>
-      <li><a href="https://github.com/Atypical-Consulting/x402-dotnet/tree/main/docs/adr"><span class="n">All</span><span class="t">The full decision log<span class="d">Including the template for proposing a new one.</span></span></a></li>
+      <li><a href="docs/adr/0002-multi-asset-with-eurc-as-a-first-class-citizen.html"><span class="n">0002</span><span class="t">Multi-asset settlement, with EURC as a first-class citizen<span class="d">Why a list of assets instead of one, and why no conversion.</span></span></a></li>
+      <li><a href="docs/adr/0003-the-server-never-holds-a-signing-key.html"><span class="n">0003</span><span class="t">The server never holds a signing key<span class="d">Custody stays out of the server, structurally.</span></span></a></li>
+      <li><a href="docs/adr/0004-prefix-the-package-ids-with-atypical.html"><span class="n">0004</span><span class="t">Prefix the package ids with Atypical.<span class="d">Why the NuGet ids and the namespaces differ.</span></span></a></li>
+      <li><a href="docs/adr/README.html"><span class="n">All</span><span class="t">The full decision log<span class="d">Including the template for proposing a new one.</span></span></a></li>
     </ul>
   </div>
 </section>
@@ -354,6 +361,7 @@ catch (PaymentRejectedException)
   <div class="wrap">
     <p>x402-dotnet · Apache-2.0 · © 2026 Atypical Consulting</p>
     <ul>
+      <li><a href="docs/">Docs</a></li>
       <li><a href="https://github.com/Atypical-Consulting/x402-dotnet">GitHub</a></li>
       <li><a href="https://github.com/Atypical-Consulting/x402-dotnet/releases">Releases</a></li>
       <li><a href="https://www.nuget.org/packages?q=Atypical.X402">NuGet</a></li>
@@ -362,24 +370,5 @@ catch (PaymentRejectedException)
   </div>
 </footer>
 
-<script>
-  // Copy buttons, added only when JavaScript runs.
-  document.querySelectorAll("pre, .install").forEach(function (el) {
-    var b = document.createElement("button");
-    b.type = "button";
-    b.className = "copy";
-    b.innerHTML = '<span aria-live="polite">Copy</span>';
-    b.addEventListener("click", function () {
-      var label = b.firstChild;
-      navigator.clipboard.writeText(el.querySelector("code").innerText).then(
-        function () { label.textContent = "Copied"; },
-        function () { label.textContent = "Copy failed"; }
-      );
-      b.dataset.done = "";
-      setTimeout(function () { label.textContent = "Copy"; delete b.dataset.done; }, 1600);
-    });
-    el.appendChild(b);
-  });
-</script>
 </body>
 </html>

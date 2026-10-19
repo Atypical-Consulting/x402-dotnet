@@ -1,9 +1,19 @@
 name: Pages
 
+# One site: the landing page (site/) at the root, the DocFX documentation (docs/site/, API
+# reference generated from src/) under /docs/. scripts/build-site.sh assembles both, exactly as it
+# does locally.
 on:
   push:
     branches: [main]
-    paths: ["site/**", ".github/workflows/pages.yml"]
+    paths:
+      - "site/**"
+      - "docs/site/**"
+      - "docs/adr/**"
+      - "src/**"
+      - "scripts/build-site.sh"
+      - ".config/dotnet-tools.json"
+      - ".github/workflows/pages.yml"
   workflow_dispatch:
 
 permissions:
@@ -23,9 +33,18 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+      - name: Build the libraries
+        run: |
+          dotnet build src/X402.AspNetCore/X402.AspNetCore.csproj --configuration Release
+          dotnet build src/X402.Client/X402.Client.csproj --configuration Release
+      - name: Assemble the site
+        run: scripts/build-site.sh _pages
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:
-          path: site
+          path: _pages
       - id: deployment
         uses: actions/deploy-pages@v5

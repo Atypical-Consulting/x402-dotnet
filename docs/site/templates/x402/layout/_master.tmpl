@@ -1,0 +1,79 @@
+{{!The documentation's only layout. It shares the landing page's stylesheet, script, header and
+footer (site/style.css, site/site.js, site/index.html), which sit one level above the docs root
+once scripts/build-site.sh assembles the site, so _rel followed by ../ is always the site root.}}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{#title}}{{title}}{{/title}}{{^title}}{{>partials/title}}{{/title}} · x402-dotnet</title>
+{{#description}}<meta name="description" content="{{description}}">{{/description}}
+<meta name="theme-color" content="#2b59f5">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232b59f5'/%3E%3Ctext x='16' y='22' font-family='Arial' font-weight='900' font-size='15' text-anchor='middle' fill='white'%3E402%3C/text%3E%3C/svg%3E">
+<link rel="preload" href="{{_rel}}../fonts/archivo-800.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="{{_rel}}../fonts/barlow-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="{{_rel}}../style.css">
+<script type="module" src="{{_rel}}../site.js"></script>
+</head>
+<body class="docs">
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="{{_rel}}../">x402-dotnet</a>
+    <nav aria-label="Primary">
+      <a href="{{_rel}}../#protocol">Protocol</a>
+      <a href="{{_rel}}../#packages">Packages</a>
+      <a href="{{_rel}}../#quick-start">Quick start</a>
+      <a href="{{_rel}}../#limits">Limits</a>
+      <a class="keep" href="{{_rel}}index.html">Guides</a>
+      <a class="keep" href="{{_rel}}api/index.html">API</a>
+      <a class="gh" href="https://github.com/Atypical-Consulting/x402-dotnet">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap doc">
+  <details class="rail-toggle">
+    <summary>Contents</summary>
+    <nav class="rail" aria-label="Documentation">
+      <p class="rail-pkg">Guides</p>
+      <ul class="rail-guides">
+        <li><a href="{{_rel}}guides/getting-started.html">Getting started</a></li>
+        <li><a href="{{_rel}}guides/protecting-endpoints.html">Protecting endpoints</a></li>
+        <li><a href="{{_rel}}guides/paying-client.html">The paying client</a></li>
+        <li><a href="{{_rel}}guides/assets-and-networks.html">Assets and networks</a></li>
+        <li><a href="{{_rel}}guides/facilitators.html">Facilitators</a></li>
+        <li><a href="{{_rel}}guides/settlement.html">Idempotency and settlement</a></li>
+        <li><a href="{{_rel}}guides/testing.html">Testing with FakeFacilitator</a></li>
+        <li><a href="{{_rel}}guides/security.html">Security model</a></li>
+        <li><a href="{{_rel}}guides/limits.html">Limits of what’s proven</a></li>
+        <li><a href="{{_rel}}adr/README.html">Architecture decisions</a></li>
+      </ul>
+      <div class="rail-api" data-toc="{{_rel}}api/toc.json">
+        <p class="rail-pkg"><a href="{{_rel}}api/index.html">API reference</a></p>
+      </div>
+    </nav>
+  </details>
+
+  <main id="main">
+    <article data-uid="{{uid}}">
+      {{!body}}
+    </article>
+  </main>
+</div>
+
+<footer>
+  <div class="wrap">
+    <p>x402-dotnet · Apache-2.0 · © 2026 Atypical Consulting</p>
+    <ul>
+      <li><a href="{{_rel}}index.html">Docs</a></li>
+      <li><a href="https://github.com/Atypical-Consulting/x402-dotnet">GitHub</a></li>
+      <li><a href="https://github.com/Atypical-Consulting/x402-dotnet/releases">Releases</a></li>
+      <li><a href="https://www.nuget.org/packages?q=Atypical.X402">NuGet</a></li>
+      <li><a href="https://github.com/Atypical-Consulting/x402-dotnet/blob/main/SECURITY.md">Security</a></li>
+    </ul>
+  </div>
+</footer>
+</body>
+</html>

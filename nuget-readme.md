@@ -17,5 +17,7 @@ Packages: `Atypical.X402.AspNetCore` (accept payments), `Atypical.X402.Client` (
   institution by the ACPR, register number 17788 — never to this library, which issues, holds and
   custodies nothing.
 
-Full documentation, runnable samples and architecture decision records:
+Guides and API reference: https://atypical-consulting.github.io/x402-dotnet/docs/
+
+Source, runnable samples and architecture decision records:
 https://github.com/Atypical-Consulting/x402-dotnet
