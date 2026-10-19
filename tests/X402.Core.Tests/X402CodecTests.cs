@@ -122,4 +122,26 @@ public sealed class X402CodecTests
         error.ShouldNotBeNullOrWhiteSpace();
         error.ShouldContain("exceeds");
     }
+
+    [Theory]
+    [InlineData("""{"x402Version":2,"resource":null,"accepts":[]}""")]
+    [InlineData("""{"x402Version":2,"resource":{"url":"https://api.test/x"},"accepts":null}""")]
+    [InlineData("""{"x402Version":2,"resource":{"url":"https://api.test/x"},"accepts":[{"scheme":"exact","network":null,"amount":"1","asset":"0x1","payTo":"0x2","maxTimeoutSeconds":60}]}""")]
+    public void TryDecode_refuses_null_in_a_required_member(string json)
+    {
+        // `required` alone accepts an explicit null; the decoded object would then crash whoever
+        // dereferences it (Accepts.Count, Resource.Url) instead of failing as a decode error.
+        var header = Convert.ToBase64String(Encoding.UTF8.GetBytes(json));
+
+        X402Codec.TryDecode<PaymentRequired>(header, out _, out _).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void TryDecode_refuses_a_payment_payload_whose_accepted_is_null()
+    {
+        var header = Convert.ToBase64String(
+            """{"x402Version":2,"accepted":null,"payload":{}}"""u8.ToArray());
+
+        X402Codec.TryDecode<PaymentPayload>(header, out _, out _).ShouldBeFalse();
+    }
 }

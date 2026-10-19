@@ -26,7 +26,11 @@ public static class X402Json
 }
 
 /// <summary>Source-generated serialisation context for the x402 protocol types.</summary>
-[JsonSourceGenerationOptions(DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
+[JsonSourceGenerationOptions(
+    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    // `required` only forces a member to be present; without this an explicit JSON null in a
+    // non-nullable member (e.g. "accepts": null) decodes and crashes whoever dereferences it.
+    RespectNullableAnnotations = true)]
 // Not a protocol type itself: registered because PaymentRequirements.Extra's exact/EVM shape is an
 // ad-hoc { name, version } map (see X402PaymentProcessor.BuildRequirements and
 // TestData.RequirementsFor). Without this, serializing it through X402Json.Options throws
