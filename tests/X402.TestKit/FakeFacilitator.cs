@@ -64,6 +64,13 @@ public sealed class FakeFacilitator : IAsyncDisposable
     /// <summary>Delay applied when <see cref="Scenario"/> is <c>Timeout</c>.</summary>
     public TimeSpan TimeoutDelay { get; set; } = TimeSpan.FromSeconds(30);
 
+    /// <summary>
+    /// When set, rewrites the payer a <em>successful</em> <c>/settle</c> reports (the recovered
+    /// signer goes in, the reported payer comes out; null omits it), so a test can tell the payer
+    /// settlement reported apart from the one verification reported.
+    /// </summary>
+    public Func<string?, string?>? RewriteSettlePayer { get; set; }
+
     /// <summary>Every nonce presented to <c>/settle</c>, duplicates included.</summary>
     public IReadOnlyList<string> SettledNonces => [.. settledNonces];
 
@@ -214,7 +221,7 @@ public sealed class FakeFacilitator : IAsyncDisposable
         return Results.Json(new SettleResponse
         {
             Success = true,
-            Payer = PayerOf(request),
+            Payer = RewriteSettlePayer is { } rewrite ? rewrite(PayerOf(request)) : PayerOf(request),
             // Deterministic hash derived from the nonce: reproducible, hence assertable.
             Transaction = "0x" + Convert.ToHexString(
                 System.Security.Cryptography.SHA256.HashData(

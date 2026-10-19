@@ -155,6 +155,7 @@ internal sealed class X402PaymentProcessor(
     /// </summary>
     private static bool TryReadCanonicalNonce(PaymentPayload payload, out string nonce)
     {
+        // Stryker disable once String : the placeholder is only read when this returns true, after it is overwritten
         nonce = "";
         string raw;
         try
@@ -323,6 +324,7 @@ internal sealed class X402PaymentProcessor(
             // the flag directly rather than trust that every handler propagates it: settlement was
             // attempted and failed, so falling through to SettleAsync below would settle — and
             // charge — a second time for the same authorization.
+            // Stryker disable once Statement : CheckCapacityAsync already discarded the buffer when it poisoned it
             buffering.Discard();
             // Not Headers.Clear(): SettleAsync is the buffer's own overflow hook (OpenBuffering
             // wires it as onOverflowAsync), so reaching this branch means it already ran at the cap
@@ -336,12 +338,15 @@ internal sealed class X402PaymentProcessor(
             // TestServer) aborts the response trying to satisfy it.
             context.Response.ContentLength = null;
             await new PaymentRequiredResult(attempt.SettlementFailedDemand).ExecuteAsync(context);
+            // Stryker disable once Statement : falling through only reaches AbandonAsync, a no-op on a slot settlement
+            // already completed or abandoned, and a flush of the buffer poisoning already discarded
             return;
         }
 
         if (buffering.Overflowed)
         {
             // Settlement already happened when the cap was crossed.
+            // Stryker disable once Statement : the host completes the response itself once the pipeline returns
             await buffering.CompleteAsync();
             return;
         }
@@ -364,6 +369,7 @@ internal sealed class X402PaymentProcessor(
             // The client is already gone: nothing could be delivered, so do not charge for it.
             // Settlement that has started still runs to completion (CancellationToken.None).
             await ledger.AbandonAsync(attempt.Identity, CancellationToken.None);
+            // Stryker disable once Statement : the client is gone and nothing flushes this buffer; Discard only frees it early
             buffering.Discard();
             return;
         }
@@ -376,6 +382,7 @@ internal sealed class X402PaymentProcessor(
         }
 
         // Settlement failed within the cap: the buffered content is discarded, never delivered.
+        // Stryker disable once Statement : nothing flushes this buffer on the failure path; Discard only frees it early
         buffering.Discard();
         // Same stale-Content-Length hazard as the Poisoned branch above — see its comment. Not
         // Headers.Clear() here: when the facilitator responded with a failure rather than being
@@ -480,6 +487,7 @@ internal sealed class X402PaymentProcessor(
                 Timestamp = time.GetUtcNow(),
                 // The resource is the URL that was paid for, not the payee address: PayTo already
                 // has its own field below.
+                // Stryker disable once String : every caller passes the attempt's resource, which is never null here
                 Resource = resource?.Url ?? "",
                 Amount = requirements.Amount,
                 Asset = requirements.Asset,

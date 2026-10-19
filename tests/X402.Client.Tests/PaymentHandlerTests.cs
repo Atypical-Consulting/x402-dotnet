@@ -391,4 +391,135 @@ public sealed class PaymentHandlerTests
 
         harness.PaidAsset.ShouldBe(KnownAssets.EurcBaseSepolia.Address);
     }
+
+    [Fact]
+    public void The_handler_refuses_null_options()
+    {
+        Should.Throw<ArgumentNullException>(() => new X402PaymentHandler(
+            null!, new Signing.PrivateKeyPaymentSigner(AnyPrivateKey), new Spending.InMemorySpendTracker(new X402ClientOptions())));
+    }
+
+    [Fact]
+    public void The_handler_refuses_a_null_signer()
+    {
+        var options = new X402ClientOptions();
+
+        Should.Throw<ArgumentNullException>(() => new X402PaymentHandler(
+            options, null!, new Spending.InMemorySpendTracker(options)));
+    }
+
+    [Fact]
+    public void The_handler_refuses_a_null_spend_tracker()
+    {
+        Should.Throw<ArgumentNullException>(() => new X402PaymentHandler(
+            new X402ClientOptions(), new Signing.PrivateKeyPaymentSigner(AnyPrivateKey), null!));
+    }
+
+    [Fact]
+    public async Task A_requirement_in_another_scheme_is_not_paid()
+    {
+        using var harness = Offering(EurcRequirement with { Scheme = "upto" });
+
+        await Should.ThrowAsync<NoAcceptablePaymentException>(
+            () => harness.Client.GetAsync("https://api.test/premium", TestContext.Current.CancellationToken));
+    }
+
+    [Theory]
+    [InlineData("ten")]
+    [InlineData("10000000000000000000000000000000000000000")] // beyond decimal's range in display units
+    public async Task A_requirement_with_an_unreadable_amount_is_not_paid(string amount)
+    {
+        using var harness = Offering(EurcRequirement with { Amount = amount });
+
+        await Should.ThrowAsync<NoAcceptablePaymentException>(
+            () => harness.Client.GetAsync("https://api.test/premium", TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task A_requirement_valid_for_one_second_is_paid()
+    {
+        using var harness = Offering(EurcRequirement with { MaxTimeoutSeconds = 1 });
+
+        var response = await harness.Client.GetAsync("https://api.test/premium", TestContext.Current.CancellationToken);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task A_requirement_valid_exactly_as_long_as_the_client_allows_is_paid()
+    {
+        using var harness = Offering(EurcRequirement, o => o.MaxAuthorizationValiditySeconds = 60);
+
+        var response = await harness.Client.GetAsync("https://api.test/premium", TestContext.Current.CancellationToken);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task The_replayed_request_keeps_the_original_headers()
+    {
+        string? replayedTrace = null;
+        using var harness = Offering(EurcRequirement, onPaid: r =>
+            replayedTrace = r.Headers.TryGetValues("X-Trace", out var v) ? v.Single() : null);
+        using var request = new HttpRequestMessage(HttpMethod.Get, "https://api.test/premium");
+        request.Headers.Add("X-Trace", "abc");
+
+        await harness.Client.SendAsync(request, TestContext.Current.CancellationToken);
+
+        replayedTrace.ShouldBe("abc");
+    }
+
+    [Fact]
+    public async Task The_replayed_request_keeps_the_original_options()
+    {
+        var key = new HttpRequestOptionsKey<string>("trace");
+        string? replayedTrace = null;
+        using var harness = Offering(EurcRequirement, onPaid: r =>
+            replayedTrace = r.Options.TryGetValue(key, out var v) ? v : null);
+        using var request = new HttpRequestMessage(HttpMethod.Get, "https://api.test/premium");
+        request.Options.Set(key, "abc");
+
+        await harness.Client.SendAsync(request, TestContext.Current.CancellationToken);
+
+        replayedTrace.ShouldBe("abc");
+    }
+
+    private const string AnyPrivateKey = "0x43da92af0b6c7af92b11f5ceb276329989499043c18c9dab3446903c84ac904a";
+
+    private static readonly PaymentRequirements EurcRequirement = new()
+    {
+        Scheme = "exact",
+        Network = KnownAssets.EurcBaseSepolia.Network,
+        Amount = "10000",
+        Asset = KnownAssets.EurcBaseSepolia.Address,
+        PayTo = "0x209693Bc6afc0C5328bA36FaF03C514EF312287C",
+        MaxTimeoutSeconds = 60,
+    };
+
+    /// <summary>A "server" demanding exactly <paramref name="requirement"/>, answering 200 to any paid replay.</summary>
+    private static PayingClientHarness Offering(
+        PaymentRequirements requirement, Action<X402ClientOptions>? configure = null,
+        Action<HttpRequestMessage>? onPaid = null) =>
+        PayingClientHarness.Create(
+            request =>
+            {
+                if (request.Headers.Contains(Transport.X402Headers.PaymentSignature))
+                {
+                    onPaid?.Invoke(request);
+                    return new HttpResponseMessage(HttpStatusCode.OK);
+                }
+
+                var response = new HttpResponseMessage(HttpStatusCode.PaymentRequired);
+                response.Headers.Add(Transport.X402Headers.PaymentRequired, Transport.X402Codec.Encode(new PaymentRequired
+                {
+                    Resource = new ResourceInfo { Url = "https://api.test/premium" },
+                    Accepts = [requirement],
+                }));
+                return response;
+            },
+            options =>
+            {
+                options.SetLimits(KnownAssets.EurcBaseSepolia, perRequest: 10m, perSession: 100m);
+                configure?.Invoke(options);
+            });
 }

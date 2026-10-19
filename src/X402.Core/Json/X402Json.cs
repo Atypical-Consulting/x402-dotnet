@@ -20,6 +20,8 @@ public static class X402Json
         // says using anything else risks emitting a shape the rest of the ecosystem will not
         // accept, so a consumer mutating WriteIndented (or anything else) process-wide must fail
         // immediately and loudly, not silently succeed until the first serialization call.
+        // Stryker disable once Statement : System.Text.Json freezes options on first use, so once any test has
+        // serialized, in-process, removing this call is no longer observable
         options.MakeReadOnly();
         return options;
     }

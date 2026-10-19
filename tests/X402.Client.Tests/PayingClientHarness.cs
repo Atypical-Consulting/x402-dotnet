@@ -88,7 +88,19 @@ public sealed class PayingClientHarness : IDisposable
     {
         ArgumentNullException.ThrowIfNull(respond);
 
-        return new PayingClientHarness(new X402ClientOptions(), (request, _) => Task.FromResult(respond(request)));
+        return Create(respond, _ => { });
+    }
+
+    /// <summary>Same as <see cref="Create(Func{HttpRequestMessage, HttpResponseMessage})"/>, with the client options configured first.</summary>
+    public static PayingClientHarness Create(
+        Func<HttpRequestMessage, HttpResponseMessage> respond, Action<X402ClientOptions> configure)
+    {
+        ArgumentNullException.ThrowIfNull(respond);
+        ArgumentNullException.ThrowIfNull(configure);
+
+        var options = new X402ClientOptions();
+        configure(options);
+        return new PayingClientHarness(options, (request, _) => Task.FromResult(respond(request)));
     }
 
     /// <summary>
