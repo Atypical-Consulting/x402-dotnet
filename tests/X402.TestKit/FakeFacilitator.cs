@@ -292,7 +292,11 @@ public sealed class FakeFacilitator : IAsyncDisposable
 
         // 1. Signature: reconstruct the TypedData exactly as the payer signed it.
         var asset = AssetFor(requirements);
-        var typedData = Eip3009TypedData.Build(requirements, authorization, asset);
+        // A real facilitator answers a malformed numeric or nonce with a refusal, not a crash: a
+        // throw here would escape TestServer into the caller as if the transport itself had failed.
+        Nethereum.ABI.EIP712.TypedData<Nethereum.ABI.EIP712.Domain> typedData;
+        try { typedData = Eip3009TypedData.Build(requirements, authorization, asset); }
+        catch (FormatException) { return X402ErrorReason.InvalidPayload; }
 
         string recovered;
         try { recovered = new Eip712TypedDataSigner().RecoverFromSignatureV4(typedData, exact.Signature); }
@@ -305,12 +309,12 @@ public sealed class FakeFacilitator : IAsyncDisposable
 
         // 2. Validity window.
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        if (long.Parse(authorization.ValidAfter) > now)
+        if (!long.TryParse(authorization.ValidAfter, out var validAfter) || validAfter > now)
         {
             return X402ErrorReason.InvalidExactEvmPayloadAuthorizationValidAfter;
         }
 
-        if (long.Parse(authorization.ValidBefore) < now)
+        if (!long.TryParse(authorization.ValidBefore, out var validBefore) || validBefore < now)
         {
             return X402ErrorReason.InvalidExactEvmPayloadAuthorizationValidBefore;
         }
