@@ -60,10 +60,6 @@
         </defs>
 
         <rect class="thin" x="8" y="8" width="584" height="504"/>
-        <g class="tick" text-anchor="middle">
-          <text x="85" y="24">1</text><text x="240" y="24">2</text><text x="400" y="24">3</text><text x="535" y="24">4</text>
-        </g>
-
         <g text-anchor="middle">
           <rect class="box" x="30" y="40" width="110" height="38"/><text x="85" y="64">client</text>
           <rect class="box" x="180" y="40" width="120" height="38"/><text x="240" y="64">ASP.NET</text>
@@ -110,16 +106,6 @@
           <line class="line" x1="240" y1="420" x2="87" y2="420" marker-end="url(#ah)"/>
         </g>
 
-        <!-- reference numerals -->
-        <g class="num">
-          <line class="thin" x1="34" y1="96" x2="80" y2="84"/><text x="18" y="104">10</text>
-          <line class="thin" x1="292" y1="80" x2="312" y2="96"/><text x="310" y="114">12</text>
-          <line class="thin" x1="44" y1="159" x2="104" y2="159"/><text x="20" y="166">14</text>
-          <line class="thin" x1="44" y1="216" x2="79" y2="220"/><text x="20" y="222">16</text>
-          <line class="thin" x1="452" y1="80" x2="472" y2="96"/><text x="470" y="114">18</text>
-          <line class="thin" x1="474" y1="420" x2="500" y2="414"/><text x="450" y="428">20</text>
-        </g>
-
         <!-- title block -->
         <rect class="thin" x="392" y="456" width="192" height="48"/>
         <line class="thin" x1="522" y1="456" x2="522" y2="504"/>
@@ -128,7 +114,7 @@
         <text x="553" y="486" text-anchor="middle" style="font-weight:600">FIG. 1</text>
       </svg>
       </div>
-      <figcaption>Fig. 1. One paid request, end to end. Reference numerals are explained under <a href="#protocol">The handshake</a>.</figcaption>
+      <figcaption>Fig. 1. One paid request, end to end. Each step is described under <a href="#protocol">The handshake</a>.</figcaption>
     </figure>
   </div>
 </div>
@@ -141,12 +127,12 @@
       <p>This library implements <strong>x402 v2 only</strong>: CAIP-2 network identifiers such as <code>eip155:84532</code>, the <code>PAYMENT-REQUIRED</code>, <code>PAYMENT-SIGNATURE</code> and <code>PAYMENT-RESPONSE</code> headers, and protocol amounts carried as strings on the wire. No <code>X-PAYMENT</code> header, no <code>x402Version: 1</code>.</p>
     </div>
     <ol class="legend">
-      <li><b>10</b><p><strong>The paying client</strong> calls an API through a plain <code>HttpClient</code>. <code>AddX402Payment()</code> attaches the handler that answers 402s on its behalf, within the spending limits you set.</p></li>
-      <li><b>12</b><p><strong>The ASP.NET Core server</strong> prices routes per asset. It holds no key and signs nothing.</p></li>
-      <li><b>14</b><p><strong>HTTP 402</strong> carries a <code>PAYMENT-REQUIRED</code> demand listing every asset the route accepts, EURC first.</p></li>
-      <li><b>16</b><p><strong>An EIP-3009 signature.</strong> The client signs a <code>transferWithAuthorization</code> with EIP-712 typed data and replays the request with it.</p></li>
-      <li><b>18</b><p><strong>The facilitator</strong> verifies the authorization and settles it on-chain. It is a service you choose, not part of this library.</p></li>
-      <li><b>20</b><p><strong>EURC or USDC on Base.</strong> Payment moves directly from payer to the configured <code>PayTo</code> address.</p></li>
+      <li><b>1</b><p><strong>The paying client</strong> calls an API through a plain <code>HttpClient</code>. <code>AddX402Payment()</code> attaches the handler that answers 402s on its behalf, within the spending limits you set.</p></li>
+      <li><b>2</b><p><strong>The ASP.NET Core server</strong> prices routes per asset. It holds no key and signs nothing.</p></li>
+      <li><b>3</b><p><strong>HTTP 402</strong> carries a <code>PAYMENT-REQUIRED</code> demand listing every asset the route accepts, EURC first.</p></li>
+      <li><b>4</b><p><strong>An EIP-3009 signature.</strong> The client signs a <code>transferWithAuthorization</code> with EIP-712 typed data and replays the request with it.</p></li>
+      <li><b>5</b><p><strong>The facilitator</strong> verifies the authorization and settles it on-chain. It is a service you choose, not part of this library.</p></li>
+      <li><b>6</b><p><strong>EURC or USDC on Base.</strong> Payment moves directly from payer to the configured <code>PayTo</code> address.</p></li>
     </ol>
   </div>
 </section>
