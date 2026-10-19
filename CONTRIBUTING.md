@@ -39,6 +39,35 @@ dotnet run --project samples/PaidApi &
 dotnet run --project samples/PayingAgent
 ```
 
+### Mutation testing and coverage
+
+[Stryker.NET](https://stryker-mutator.io/docs/stryker-net/introduction/) checks that the tests
+would *fail* if the code were wrong, on the highest-risk files: the codec
+(`X402Codec.cs`, `X402Json.cs`), the payment processor and the payment handler. Each library has
+its own `stryker-config.json` next to its test project:
+
+```bash
+dotnet tool restore
+cd tests/X402.Core.Tests && dotnet stryker   # or X402.AspNetCore.Tests, X402.Client.Tests
+```
+
+The HTML report lands under `StrykerOutput/<timestamp>/reports/`. The `Mutation` workflow runs the
+same three on every pull request and weekly; a score below a config's `thresholds.break` fails
+that PR. A surviving mutant gets a test that kills it; only a provably equivalent one gets an
+inline `// Stryker disable once <Mutator> : <reason>` instead. The configs use Stryker's `mtp`
+runner: under the Microsoft.Testing.Platform runner `global.json` selects, the default VSTest
+runner finds the tests but kills nothing.
+
+Branch coverage comes from `coverlet.MTP` and is reported, never gated:
+
+```bash
+dotnet test --coverlet --results-directory ./TestResults
+dotnet reportgenerator -reports:"TestResults/*.cobertura.*.xml" -targetdir:coverage -reporttypes:Html
+```
+
+Each test project's `testconfig.json` names the three libraries explicitly — without it,
+coverlet.MTP's name-based default exclusions drop the library each test project is named after.
+
 ## Architecture: keep the layering intact
 
 ```
