@@ -43,8 +43,9 @@ dotnet run --project samples/PayingAgent
 
 [Stryker.NET](https://stryker-mutator.io/docs/stryker-net/introduction/) checks that the tests
 would *fail* if the code were wrong, on the highest-risk files: the codec
-(`X402Codec.cs`, `X402Json.cs`), the payment processor and the payment handler. Each library has
-its own `stryker-config.json` next to its test project:
+(`X402Codec.cs`, `X402Json.cs`), the payment processor, the response buffering
+(`BufferingResponseBodyFeature.cs`), the middleware (`X402Middleware.cs`) and the payment
+handler. Each library has its own `stryker-config.json` next to its test project:
 
 ```bash
 dotnet tool restore

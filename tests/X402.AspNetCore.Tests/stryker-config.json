@@ -8,6 +8,6 @@
       "**/Middleware/X402Middleware.cs"
     ],
     "reporters": ["html", "progress", "markdown"],
-    "thresholds": { "high": 100, "low": 96, "break": 96 }
+    "thresholds": { "high": 100, "low": 98, "break": 98 }
   }
 }
