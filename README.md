@@ -314,12 +314,18 @@ its own edges:
   [`tests/X402.Core.Tests/vectors/SOURCE.md`](tests/X402.Core.Tests/vectors/SOURCE.md), and
   re-synchronizable with [`scripts/sync-vectors.sh`](scripts/sync-vectors.sh). Treat them as the
   most authoritative fixed data available, not as an official suite — because none exists.
-- **No test in this repository reaches an on-chain failure mode.** `X402.TestKit`'s
-  `FakeFacilitator` performs real EIP-712 signature recovery and real validity-window, amount and
-  recipient checks — but it has no ledger; its settlement transaction hash is derived from the
-  nonce. Insufficient on-chain balance, a reverted `transferWithAuthorization`, mempool races, or a
-  facilitator that reports success on a transfer that later fails are all outside what any test
-  here can catch. `samples/README.md` shows what the *real* facilitator does instead — refuses an
+- **On-chain failure modes are tested on a local fork only, against a test-only facilitator.**
+  `X402.TestKit`'s `FakeFacilitator` performs real EIP-712 signature recovery and real
+  validity-window, amount and recipient checks — but it has no ledger; its settlement transaction
+  hash is derived from the nonce. The opt-in `tests/X402.OnChain.Tests` (`X402_ONCHAIN=1`, Docker
+  and outbound HTTPS) closes part of that gap: it forks Base Sepolia in an Anvil container, so
+  Circle's real `FiatToken` bytecode for EURC and USDC settles or refuses payments made through
+  the full pipeline. It proves five cases — a settlement moves the on-chain balance (EURC and
+  USDC), an unfunded payer is refused, a transfer that reverts at settlement withholds the
+  content, a nonce already used on chain settles exactly once, and an authorization expired on
+  the chain's clock is rejected by the contract. Still uncovered: mempool races and reorgs, a real
+  facilitator that reports success on a transfer that later fails (the facilitator in those tests
+  is our own), and live-network behaviour. `samples/README.md` shows what the *real* facilitator does instead — refuses an
   empty wallet with `invalid_exact_evm_insufficient_balance`, a code that isn't even one of
   `X402ErrorReason`'s documented constants, propagated verbatim rather than guessed at.
 - **There is no automatic adaptation to a facilitator's capabilities.** `GetSupportedAsync` exists
@@ -367,7 +373,8 @@ its own edges:
 - **`Nethereum.Signer.EIP712`** — client-side EIP-712 typed-data signing for `transferWithAuthorization`
 - **`Microsoft.Extensions.Http.Resilience`** — retry/timeout policy around facilitator calls
 - **`System.Text.Json`** with source-generated contexts for the wire codec
-- **xUnit v3 + Shouldly** — tests across five test projects, none of them network-dependent
+- **xUnit v3 + Shouldly** — tests across six test projects; one of them (`X402.OnChain.Tests`) is
+  opt-in and needs Docker and the network, the other five are offline
 
 ## Roadmap
 

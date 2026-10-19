@@ -21,7 +21,7 @@ contributions are licensed under the project's [Apache-2.0 License](LICENSE).
 ```bash
 dotnet restore
 dotnet build --configuration Release   # TreatWarningsAsErrors is on — a warning fails the build
-dotnet test                            # the full suite, across five test projects
+dotnet test                            # the full suite, across six test projects (on-chain ones skip)
 dotnet pack --configuration Release --output ./nupkg
 ```
 

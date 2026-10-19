@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <!-- Same opt-out as the sibling test projects: xunit's public test classes are not API. -->
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="Nethereum.Web3" />
+    <PackageReference Include="Shouldly" />
+    <PackageReference Include="Testcontainers" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="coverlet.MTP" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+    <Using Include="Shouldly" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- One source for the paid API + paying agent: the on-chain tests only swap its facilitator. -->
+    <Compile Include="..\X402.Integration.Tests\PaidApiFixture.cs" Link="PaidApiFixture.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\X402.AspNetCore\X402.AspNetCore.csproj" />
+    <ProjectReference Include="..\..\src\X402.Client\X402.Client.csproj" />
+    <ProjectReference Include="..\X402.TestKit\X402.TestKit.csproj" />
+  </ItemGroup>
+
+</Project>

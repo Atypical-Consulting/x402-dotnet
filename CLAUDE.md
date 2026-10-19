@@ -55,13 +55,19 @@ mirror the code:
 ```bash
 dotnet restore
 dotnet build --configuration Release   # TreatWarningsAsErrors is on — a warning fails the build
-dotnet test                            # full suite across five test projects
+dotnet test                            # full suite across six test projects (on-chain ones skip)
 dotnet pack --configuration Release --output ./nupkg
 ```
 
 ```bash
 dotnet test --filter "FullyQualifiedName~X402CodecTests"   # a single test class
+X402_ONCHAIN=1 dotnet test --project tests/X402.OnChain.Tests  # opt-in: Docker + outbound HTTPS
 ```
+
+`tests/X402.OnChain.Tests` is opt-in: without `X402_ONCHAIN=1` every test in it reports Skipped
+and nothing touches Docker or the network. With it, an Anvil container forks Base Sepolia at a
+pinned block (`X402_BASE_SEPOLIA_RPC_URL` overrides the public RPC; `X402_ANVIL_RPC_URL` points at
+an already-running fork instead of starting a container). CI runs it in its own `onchain` job.
 
 ## Conventions that are enforced, not just documented
 
@@ -97,10 +103,16 @@ dotnet test --filter "FullyQualifiedName~X402CodecTests"   # a single test class
 - **MiCA compliance is the asset issuer's, never this library's.** EURC's issuer is Circle France
   SAS (ACPR EMI register 17788). This library issues, holds and custodies nothing. Don't write
   anything that lets a reader infer otherwise.
-- **No test here reaches an on-chain failure mode.** `FakeFacilitator` has no ledger; its
-  settlement hash is derived from the nonce. Insufficient balance, a reverted
-  `transferWithAuthorization`, mempool races, and a facilitator reporting success on a transfer
-  that later fails are all outside what any test in this repository can catch.
+- **On-chain failure modes are covered only on a local fork, against a test-only facilitator.**
+  `FakeFacilitator` has no ledger (its settlement hash is derived from the nonce).
+  `tests/X402.OnChain.Tests` (opt-in, `X402_ONCHAIN=1`) runs Circle's real `FiatToken` for EURC
+  and USDC on an Anvil fork of Base Sepolia and proves, through the full client → server →
+  facilitator pipeline, five cases: a settlement moves the balance (EURC and USDC), an unfunded
+  payer is refused, a transfer that reverts at settlement withholds the content, a nonce already
+  used on chain settles exactly once, and an authorization expired on the chain's clock is
+  rejected by the contract. Still outside every test here: mempool races and reorgs, a real
+  facilitator reporting success on a transfer that later fails (the facilitator in those tests is
+  our own), and live-network behaviour.
 - **There is no automatic adaptation to a facilitator's capabilities.** `GetSupportedAsync` is
   public surface on `IFacilitatorClient`; nothing in `X402.AspNetCore` or `X402.Client` consults
   it to adjust offered or accepted assets. That decision is left to the operator.
