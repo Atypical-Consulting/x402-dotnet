@@ -4,6 +4,6 @@
     "test-runner": "mtp",
     "mutate": ["**/X402PaymentHandler.cs"],
     "reporters": ["html", "progress", "markdown"],
-    "thresholds": { "high": 80, "low": 60, "break": 72 }
+    "thresholds": { "high": 80, "low": 72, "break": 72 }
   }
 }
