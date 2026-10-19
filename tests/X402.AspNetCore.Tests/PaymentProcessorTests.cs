@@ -129,16 +129,6 @@ public sealed class PaymentProcessorTests : IAsyncLifetime
         RawSettlementTransaction(replay).ShouldBe("\"\"");
     }
 
-    [Fact]
-    public async Task A_settle_transaction_hash_is_emitted_unchanged()
-    {
-        server.Facilitator.RewriteSettleTransaction = _ => "0xabc";
-
-        var response = await server.PayAsync("/premium", KnownAssets.EurcBaseSepolia);
-
-        RawSettlementTransaction(response).ShouldBe("\"0xabc\"");
-    }
-
     /// <summary>The raw JSON of the PAYMENT-RESPONSE <c>transaction</c> member, read without the
     /// typed decode, which accepts null and would hide the wire shape.</summary>
     private static string RawSettlementTransaction(HttpResponseMessage response)

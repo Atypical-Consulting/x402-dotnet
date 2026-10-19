@@ -73,9 +73,10 @@ public sealed class FakeFacilitator : IAsyncDisposable
     public Func<string?, string?>? RewriteSettlePayer { get; set; }
 
     /// <summary>
-    /// When set, rewrites the transaction every <c>/settle</c> response reports (the hash that
-    /// would have been reported goes in, the reported value comes out; null emits JSON
-    /// <c>null</c>), so a test can play a facilitator that answers <c>"transaction": null</c>.
+    /// When set, rewrites the transaction every <c>/settle</c> response reports (the value that
+    /// would have been reported goes in — the hash on success, <c>""</c> on failure — and the
+    /// reported value comes out; null emits JSON <c>null</c>), so a test can play a facilitator
+    /// that answers <c>"transaction": null</c>.
     /// </summary>
     public Func<string?, string?>? RewriteSettleTransaction { get; set; }
 
