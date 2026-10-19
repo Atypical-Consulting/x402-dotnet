@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>x402-dotnet</title>
+<meta name="description" content="The .NET implementation of the x402 v2 HTTP payment protocol. EURC and USDC as equal, first-class settlement assets, euro offered first, with a server that never touches a signing key.">
+<meta name="theme-color" content="#2b59f5">
+<meta property="og:title" content="x402-dotnet">
+<meta property="og:description" content="Accept and pay x402 v2 HTTP payments in .NET. EURC and USDC as first-class settlement assets.">
+<meta property="og:image" content="https://raw.githubusercontent.com/Atypical-Consulting/x402-dotnet/main/.github/banner.png">
+<meta property="og:url" content="https://atypical-consulting.github.io/x402-dotnet/">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232b59f5'/%3E%3Ctext x='16' y='22' font-family='Arial' font-weight='900' font-size='15' text-anchor='middle' fill='white'%3E402%3C/text%3E%3C/svg%3E">
+<link rel="preload" href="fonts/archivo-800.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/barlow-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#">x402-dotnet</a>
+    <nav aria-label="Primary">
+      <a href="#protocol">Protocol</a>
+      <a href="#packages">Packages</a>
+      <a href="#quick-start">Quick start</a>
+      <a href="#limits">Limits</a>
+      <a class="gh" href="https://github.com/Atypical-Consulting/x402-dotnet">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+<div class="hero">
+  <div class="hero-panel">
+    <h1><span>x402-</span><span>dotnet</span></h1>
+    <p class="hero-claim">Accept and pay x402 v2 HTTP payments in .NET, in EURC or USDC, with a server that never touches a signing key.</p>
+    <div class="install"><code>dotnet add package Atypical.X402.AspNetCore</code></div>
+    <ul class="hero-meta" aria-label="At a glance">
+      <li>.NET 10</li>
+      <li>x402 v2</li>
+      <li>Base</li>
+      <li>EURC · USDC</li>
+      <li>v<span class="ver">0.0.0</span> <!-- x-release-please-version --></li>
+    </ul>
+  </div>
+
+  <div class="hero-figure">
+    <figure class="fig">
+      <div class="fig-scroll">
+      <svg viewBox="0 0 600 520" role="img" aria-labelledby="fig1-title fig1-desc">
+        <title id="fig1-title">Figure 1: the x402 handshake</title>
+        <desc id="fig1-desc">A sequence diagram. The client requests a resource from the ASP.NET server, which holds no key and answers HTTP 402. The client signs an EIP-3009 authorization and retries with a PAYMENT-SIGNATURE header. The server asks the facilitator to verify and settle; the facilitator submits the transfer on Base, in EURC or USDC. The server answers 200 OK.</desc>
+        <defs>
+          <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+            <path d="M0,1 L10,5 L0,9 z" fill="currentColor"/>
+          </marker>
+        </defs>
+
+        <rect class="thin" x="8" y="8" width="584" height="504"/>
+        <g class="tick" text-anchor="middle">
+          <text x="85" y="24">1</text><text x="240" y="24">2</text><text x="400" y="24">3</text><text x="535" y="24">4</text>
+        </g>
+
+        <g text-anchor="middle">
+          <rect class="box" x="30" y="40" width="110" height="38"/><text x="85" y="64">client</text>
+          <rect class="box" x="180" y="40" width="120" height="38"/><text x="240" y="64">ASP.NET</text>
+          <rect class="box" x="340" y="40" width="120" height="38"/><text x="400" y="64">facilitator</text>
+          <rect class="box" x="495" y="40" width="80" height="38"/><text x="535" y="64">Base</text>
+        </g>
+
+        <line class="life" x1="85" y1="78" x2="85" y2="440"/>
+        <line class="life" x1="240" y1="78" x2="240" y2="440"/>
+        <line class="life" x1="400" y1="78" x2="400" y2="440"/>
+        <line class="life" x1="535" y1="78" x2="535" y2="364"/>
+
+        <text class="lbl" x="250" y="100">no key</text>
+
+        <g class="msg" style="--i:0">
+          <text class="lbl" x="162" y="122" text-anchor="middle">GET /resource</text>
+          <line class="line" x1="85" y1="132" x2="238" y2="132" marker-end="url(#ah)"/>
+        </g>
+        <g class="msg" style="--i:1">
+          <rect class="hot" x="104" y="146" width="116" height="26"/>
+          <text class="hot-t" x="162" y="164" text-anchor="middle">HTTP 402</text>
+          <line class="line" x1="240" y1="184" x2="87" y2="184" marker-end="url(#ah)"/>
+        </g>
+        <g class="msg" style="--i:2">
+          <rect class="act" x="79" y="198" width="12" height="52"/>
+          <text x="102" y="229">sign EIP-3009</text>
+        </g>
+        <g class="msg" style="--i:3">
+          <text class="lbl" x="162" y="270" text-anchor="middle">PAYMENT-SIGNATURE</text>
+          <line class="line" x1="85" y1="280" x2="238" y2="280" marker-end="url(#ah)"/>
+        </g>
+        <g class="msg" style="--i:4">
+          <text x="320" y="312" text-anchor="middle">verify · settle</text>
+          <line class="line" x1="240" y1="322" x2="398" y2="322" marker-end="url(#ah)"/>
+        </g>
+        <g class="msg" style="--i:5">
+          <text x="467" y="352" text-anchor="middle">transfer</text>
+          <line class="line" x1="400" y1="362" x2="533" y2="362" marker-end="url(#ah)"/>
+          <rect class="box" x="500" y="372" width="70" height="26" rx="13"/><text x="535" y="390" text-anchor="middle">EURC</text>
+          <rect class="box" x="500" y="406" width="70" height="26" rx="13"/><text x="535" y="424" text-anchor="middle">USDC</text>
+        </g>
+        <g class="msg" style="--i:6">
+          <text x="162" y="410" text-anchor="middle">200 OK</text>
+          <line class="line" x1="240" y1="420" x2="87" y2="420" marker-end="url(#ah)"/>
+        </g>
+
+        <!-- reference numerals -->
+        <g class="num">
+          <line class="thin" x1="34" y1="96" x2="80" y2="84"/><text x="18" y="104">10</text>
+          <line class="thin" x1="292" y1="80" x2="312" y2="96"/><text x="310" y="114">12</text>
+          <line class="thin" x1="44" y1="159" x2="104" y2="159"/><text x="20" y="166">14</text>
+          <line class="thin" x1="44" y1="216" x2="79" y2="220"/><text x="20" y="222">16</text>
+          <line class="thin" x1="452" y1="80" x2="472" y2="96"/><text x="470" y="114">18</text>
+          <line class="thin" x1="474" y1="420" x2="500" y2="414"/><text x="450" y="428">20</text>
+        </g>
+
+        <!-- title block -->
+        <rect class="thin" x="392" y="456" width="192" height="48"/>
+        <line class="thin" x1="522" y1="456" x2="522" y2="504"/>
+        <text class="lbl" x="402" y="476">402 HANDSHAKE</text>
+        <text class="tick" x="402" y="494">x402 v2 · exact</text>
+        <text x="553" y="486" text-anchor="middle" style="font-weight:600">FIG. 1</text>
+      </svg>
+      </div>
+      <figcaption>Fig. 1. One paid request, end to end. Reference numerals are explained under <a href="#protocol">The handshake</a>.</figcaption>
+    </figure>
+  </div>
+</div>
+
+<section id="protocol">
+  <div class="wrap split">
+    <div class="prose">
+      <h2>The handshake</h2>
+      <p class="lede"><a href="https://x402.org">x402</a> turns HTTP 402 Payment Required into a working payment protocol. A server demands payment, the client signs, a facilitator settles, the request replays and succeeds.</p>
+      <p>This library implements <strong>x402 v2 only</strong>: CAIP-2 network identifiers such as <code>eip155:84532</code>, the <code>PAYMENT-REQUIRED</code>, <code>PAYMENT-SIGNATURE</code> and <code>PAYMENT-RESPONSE</code> headers, and protocol amounts carried as strings on the wire. No <code>X-PAYMENT</code> header, no <code>x402Version: 1</code>.</p>
+    </div>
+    <ol class="legend">
+      <li><b>10</b><p><strong>The paying client</strong> calls an API through a plain <code>HttpClient</code>. <code>AddX402Payment()</code> attaches the handler that answers 402s on its behalf, within the spending limits you set.</p></li>
+      <li><b>12</b><p><strong>The ASP.NET Core server</strong> prices routes per asset. It holds no key and signs nothing.</p></li>
+      <li><b>14</b><p><strong>HTTP 402</strong> carries a <code>PAYMENT-REQUIRED</code> demand listing every asset the route accepts, EURC first.</p></li>
+      <li><b>16</b><p><strong>An EIP-3009 signature.</strong> The client signs a <code>transferWithAuthorization</code> with EIP-712 typed data and replays the request with it.</p></li>
+      <li><b>18</b><p><strong>The facilitator</strong> verifies the authorization and settles it on-chain. It is a service you choose, not part of this library.</p></li>
+      <li><b>20</b><p><strong>EURC or USDC on Base.</strong> Payment moves directly from payer to the configured <code>PayTo</code> address.</p></li>
+    </ol>
+  </div>
+</section>
+
+<section id="euro">
+  <div class="wrap">
+    <h2>Two currencies, offered in that order</h2>
+    <p class="lede">Every reference x402 SDK, in TypeScript, Python and Go, ships one dollar stablecoin per chain. None ships a euro asset. x402-dotnet settles EURC end to end on equal footing with USDC, and offers the euro first.</p>
+
+    <div class="assets">
+      <div class="asset first">
+        <p class="tag">Offered first</p>
+        <p class="sym">EURC</p>
+        <p>Signing, verification, settlement and spending limits, end to end. <code>KnownAssets.EurcBaseSepolia</code> and its Base mainnet counterpart ship verified on-chain profiles.</p>
+      </div>
+      <div class="asset">
+        <p class="tag">Equal footing</p>
+        <p class="sym">USDC</p>
+        <p>The same path, the same guarantees. A route can be priced in either asset or in both, and the payer settles in whichever it holds.</p>
+      </div>
+    </div>
+
+    <div class="caveats">
+      <div>
+        <h3>No conversion, anywhere.</h3>
+        <p>Prices and client spending limits are held per asset, keyed by network and contract address, never aggregated. A shared cap across EURC and USDC would imply an exchange rate this library does not have, and a test enforces that no conversion API exists.</p>
+      </div>
+      <div>
+        <h3>EURC support here is not proof that your facilitator settles it.</h3>
+        <p>The x402 wire protocol never advertises settled assets: <code>GET /supported</code> returns scheme and network pairs only. <code>PayingAgent --probe</code> in the samples answers the question empirically, per facilitator, per asset. Run it before you rely on one.</p>
+      </div>
+      <div>
+        <h3>MiCA compliance belongs to the issuer.</h3>
+        <p>EURC is issued by Circle France SAS, licensed as an electronic money institution by the ACPR (register number 17788). x402-dotnet issues nothing, holds nothing and custodies nothing. It moves a signed authorization from a payer to a facilitator.</p>
+      </div>
+      <div>
+        <h3>Why the deviation.</h3>
+        <p>The original brief specified USDC alone. Going multi-asset from the start, euro first, was a deliberate decision recorded in <a href="https://github.com/Atypical-Consulting/x402-dotnet/blob/main/docs/adr/0002-multi-asset-with-eurc-as-a-first-class-citizen.md">ADR 0002</a>.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="packages">
+  <div class="wrap">
+    <h2>Three packages, one version</h2>
+    <p class="lede">Each layer depends only on the one below it. All three ship the same version number and full XML documentation for IntelliSense.</p>
+    <table class="parts">
+      <thead><tr><th scope="col">Package</th><th scope="col">Role</th><th scope="col">Deliberately absent</th></tr></thead>
+      <tbody>
+        <tr>
+          <th scope="row" class="pkg"><a href="https://www.nuget.org/packages/Atypical.X402.AspNetCore/">Atypical.X402.AspNetCore</a></th>
+          <td><strong>Accept payments.</strong> Server middleware, the imperative <code>IX402PaymentGate</code>, the facilitator client, an idempotency ledger.</td>
+          <td>Any signing library. Any key, secret or mnemonic property.</td>
+        </tr>
+        <tr>
+          <th scope="row" class="pkg"><a href="https://www.nuget.org/packages/Atypical.X402.Client/">Atypical.X402.Client</a></th>
+          <td><strong>Pay for requests.</strong> EIP-3009 signing, the paying <code>DelegatingHandler</code>, per-asset spending limits.</td>
+          <td>Limits shared across currencies.</td>
+        </tr>
+        <tr>
+          <th scope="row" class="pkg"><a href="https://www.nuget.org/packages/Atypical.X402.Core/">Atypical.X402.Core</a></th>
+          <td><strong>The wire format.</strong> Protocol types, transport codec, extension points. A transitive dependency of both, published separately for tooling.</td>
+          <td>ASP.NET Core, signing, network calls, telemetry. An architecture test checks it.</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="note">The package ids carry the <code>Atypical.</code> prefix; the namespaces do not. You still write <code>using X402;</code>, <code>using X402.Client;</code> and <code>using X402.AspNetCore;</code>. The bare <code>X402.*</code> ids on nuget.org belong to an <a href="https://github.com/michielpost/x402-dotnet">unrelated implementation</a> (<a href="https://github.com/Atypical-Consulting/x402-dotnet/blob/main/docs/adr/0004-prefix-the-package-ids-with-atypical.md">ADR 0004</a>).</p>
+  </div>
+</section>
+
+<section id="quick-start">
+  <div class="wrap">
+    <h2>Quick start</h2>
+    <p class="lede">No wallet needed for a first run. The samples include an offline mode where an in-process fake facilitator verifies signatures for real and settles anything well-formed.</p>
+
+    <ol class="steps">
+      <li>
+        <div>
+          <h3>Create an API and add the server package</h3>
+<pre><code>dotnet new webapi -n PaidApi &amp;&amp; cd PaidApi
+dotnet add package Atypical.X402.AspNetCore</code></pre>
+        </div>
+      </li>
+      <li>
+        <div>
+          <h3>Say who gets paid, on which network, in which assets</h3>
+          <p class="file">appsettings.json</p>
+<pre><code>{
+  "X402": {
+    "PayTo": "0x209693Bc6afc0C5328bA36FaF03C514EF312287C",
+    "Network": "eip155:84532",
+    "Assets": [{ "Symbol": "EURC" }, { "Symbol": "USDC" }],
+    "FacilitatorUrl": "https://x402.org/facilitator"
+  }
+}</code></pre>
+        </div>
+      </li>
+      <li>
+        <div>
+          <h3>Register the pipeline and price a route</h3>
+          <p>Pricing a route in an asset the server has not configured throws from <code>UseX402</code> at start-up, before the host accepts a request.</p>
+          <p class="file">Program.cs</p>
+<pre><code>using X402.AspNetCore.DependencyInjection;
+using X402.Assets;
+using X402.Pricing;
+
+var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddX402(builder.Configuration.GetSection("X402"));
+var app = builder.Build();
+
+app.UseX402(routes =&gt; routes.Map(
+    "/weather", new PriceSet([Price.For(KnownAssets.EurcBaseSepolia, 0.01m)])));
+
+app.MapGet("/weather", () =&gt; Results.Ok(new { City = "Brussels", Temp = 19 }));
+app.Run();</code></pre>
+        </div>
+      </li>
+      <li>
+        <div>
+          <h3>Pay for it from any .NET client</h3>
+          <p>The signer is the only place a key exists. Bring your own <code>IPaymentSigner</code> for an HSM or a KMS.</p>
+<pre><code>dotnet add package Atypical.X402.Client</code></pre>
+<pre><code>using Microsoft.Extensions.DependencyInjection;
+using X402.Assets;
+using X402.Client;
+using X402.Client.DependencyInjection;
+using X402.Client.Signing;
+using X402.Networks;
+
+var myPrivateKey = Environment.GetEnvironmentVariable("X402_PRIVATE_KEY")
+    ?? throw new InvalidOperationException("Set X402_PRIVATE_KEY before running.");
+
+var services = new ServiceCollection();
+services.AddX402Client(options =&gt;
+{
+    options.AllowedNetworks.Add(KnownNetworks.BaseSepolia);
+    options.SetLimits(KnownAssets.EurcBaseSepolia, perRequest: 1m, perSession: 10m);
+});
+services.AddSingleton&lt;IPaymentSigner&gt;(new PrivateKeyPaymentSigner(myPrivateKey));
+services.AddHttpClient("PaidApi", c =&gt; c.BaseAddress = new Uri("http://localhost:5000"))
+    .AddX402Payment();
+
+var http = services.BuildServiceProvider()
+    .GetRequiredService&lt;IHttpClientFactory&gt;().CreateClient("PaidApi");
+
+try
+{
+    var response = await http.GetAsync("/weather"); <span class="c">// 402 -&gt; sign -&gt; replay -&gt; 200, if the wallet can pay</span>
+}
+catch (PaymentRejectedException)
+{
+    <span class="c">// Expected here with a fresh, unfunded wallet — the facilitator refuses settlement. Step 4</span>
+    <span class="c">// above is where a reader actually watching this succeed should start; see</span>
+    <span class="c">// samples/README.md#running-fully-offline for the real, unedited output.</span>
+}</code></pre>
+          <p class="note">"Step 4" in that comment refers to the README's offline run. The runnable <a href="https://github.com/Atypical-Consulting/x402-dotnet/tree/main/samples">samples</a>, <code>PaidApi</code> and <code>PayingAgent</code>, add dynamic per-request pricing, the facilitator probe, and real, unedited console output from actual runs.</p>
+        </div>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<section id="custody" class="custody">
+  <div class="wrap split">
+    <div class="prose">
+      <h2>Non-custodial by construction</h2>
+      <p class="lede">The server holds nothing and signs nothing. That is enforced by what the code cannot express, not by a line in the documentation.</p>
+    </div>
+    <ul class="facts">
+      <li><code>Atypical.X402.AspNetCore</code> references no signing library.</li>
+      <li><code>X402Options</code> exposes no key, secret or mnemonic property, so no operator can configure custody by accident. A test asserts that none appears.</li>
+      <li>Gas sponsoring, batching and custody are facilitator concerns. Adding a signing dependency to the server package would supersede <a href="https://github.com/Atypical-Consulting/x402-dotnet/blob/main/docs/adr/0003-the-server-never-holds-a-signing-key.md">ADR 0003</a>; it must not happen quietly.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="limits">
+  <div class="wrap">
+    <h2>Limits of what’s proven here</h2>
+    <p class="lede">A library that wants to be a reference implementation earns it by naming its own edges.</p>
+    <ul class="limits">
+      <li>
+        <h3>No published conformance vector suite exists.</h3>
+        <p>The x402 Foundation does not publish a cross-language test-vector corpus. This project’s vectors are extracted mechanically from JSON examples in the vendored specification documents, with provenance recorded in <a href="https://github.com/Atypical-Consulting/x402-dotnet/blob/main/tests/X402.Core.Tests/vectors/SOURCE.md"><code>vectors/SOURCE.md</code></a>. They are the most authoritative fixed data available, not an official suite.</p>
+      </li>
+      <li>
+        <h3>No test reaches an on-chain failure mode.</h3>
+        <p>The test kit’s <code>FakeFacilitator</code> performs real EIP-712 signature recovery and real validity-window, amount and recipient checks, but it has no ledger. Insufficient balance, a reverted <code>transferWithAuthorization</code>, mempool races, or a facilitator reporting success on a transfer that later fails are all outside what any test here can catch.</p>
+      </li>
+      <li>
+        <h3>There is no automatic adaptation to a facilitator’s capabilities.</h3>
+        <p><code>GetSupportedAsync</code> is public surface on <code>IFacilitatorClient</code>, but nothing in the server or client package consults it to adjust which assets are offered or accepted. That decision is left to the operator, typically informed by running <code>--probe</code> once against the chosen facilitator.</p>
+      </li>
+      <li>
+        <h3>The in-memory test server is more forgiving than a real transport.</h3>
+        <p><code>TestServer</code> tolerates wire-level inconsistencies, such as a stale <code>Content-Length</code>, that a real Kestrel connection rejects. One such defect was found and fixed; the same blind spot could still hide an equivalent one elsewhere in the suite.</p>
+      </li>
+    </ul>
+  </div>
+</section>
+
+<section id="decisions">
+  <div class="wrap">
+    <h2>Decisions on record</h2>
+    <p class="lede">Every choice that departs from the obvious reading of a requirement is written down as an architecture decision record.</p>
+    <ul class="adrs">
+      <li><a href="https://github.com/Atypical-Consulting/x402-dotnet/blob/main/docs/adr/0002-multi-asset-with-eurc-as-a-first-class-citizen.md"><span class="n">0002</span><span class="t">Multi-asset settlement, with EURC as a first-class citizen<span class="d">Why a list of assets instead of one, and why no conversion.</span></span></a></li>
+      <li><a href="https://github.com/Atypical-Consulting/x402-dotnet/blob/main/docs/adr/0003-the-server-never-holds-a-signing-key.md"><span class="n">0003</span><span class="t">The server never holds a signing key<span class="d">Custody stays out of the server, structurally.</span></span></a></li>
+      <li><a href="https://github.com/Atypical-Consulting/x402-dotnet/blob/main/docs/adr/0004-prefix-the-package-ids-with-atypical.md"><span class="n">0004</span><span class="t">Prefix the package ids with Atypical.<span class="d">Why the NuGet ids and the namespaces differ.</span></span></a></li>
+      <li><a href="https://github.com/Atypical-Consulting/x402-dotnet/tree/main/docs/adr"><span class="n">All</span><span class="t">The full decision log<span class="d">Including the template for proposing a new one.</span></span></a></li>
+    </ul>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>x402-dotnet · Apache-2.0 · © 2026 Atypical Consulting</p>
+    <ul>
+      <li><a href="https://github.com/Atypical-Consulting/x402-dotnet">GitHub</a></li>
+      <li><a href="https://github.com/Atypical-Consulting/x402-dotnet/releases">Releases</a></li>
+      <li><a href="https://www.nuget.org/packages?q=Atypical.X402">NuGet</a></li>
+      <li><a href="https://github.com/Atypical-Consulting/x402-dotnet/blob/main/SECURITY.md">Security</a></li>
+    </ul>
+  </div>
+</footer>
+
+<script>
+  // Copy buttons, added only when JavaScript runs.
+  document.querySelectorAll("pre, .install").forEach(function (el) {
+    var b = document.createElement("button");
+    b.type = "button";
+    b.className = "copy";
+    b.innerHTML = '<span aria-live="polite">Copy</span>';
+    b.addEventListener("click", function () {
+      var label = b.firstChild;
+      navigator.clipboard.writeText(el.querySelector("code").innerText).then(
+        function () { label.textContent = "Copied"; },
+        function () { label.textContent = "Copy failed"; }
+      );
+      b.dataset.done = "";
+      setTimeout(function () { label.textContent = "Copy"; delete b.dataset.done; }, 1600);
+    });
+    el.appendChild(b);
+  });
+</script>
+</body>
+</html>
