@@ -14,6 +14,10 @@
         {
           "type": "generic",
           "path": "Directory.Build.props"
+        },
+        {
+          "type": "generic",
+          "path": "site/index.html"
         }
       ],
       "changelog-sections": [
