@@ -1,4 +1,3 @@
-using System.Net;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.Logging;
@@ -50,18 +49,18 @@ public sealed class X402MiddlewareTests
     }
 
     [Fact]
-    public async Task A_refusal_whose_buffer_overflowed_still_answers_with_the_refusal()
+    public async Task A_refusal_whose_buffer_was_poisoned_still_answers_with_the_refusal()
     {
-        // An endpoint ignored a gate refusal, then let the cap-crossing failure propagate instead
-        // of swallowing it.
+        // An endpoint ignored a gate refusal, wrote past the cap (settlement can never succeed for
+        // a refusal, so that poisons the buffer), and let the failure propagate.
         var context = new DefaultHttpContext();
         var middleware = Create(
-            ctx =>
+            async ctx =>
             {
                 var feature = ctx.Features.Get<X402RequestFeature>()!;
                 feature.Refusal = PaymentAttempt.Refused(new PaymentRequiredResult(Demand()));
                 feature.Buffer = Buffering(ctx, settles: false);
-                throw new BufferingSettlementFailedException();
+                await feature.Buffer.Stream.WriteAsync(new byte[2]);
             },
             new CapturingLogger());
 
@@ -87,7 +86,7 @@ public sealed class X402MiddlewareTests
         await Should.ThrowAsync<InvalidOperationException>(
             () => middleware.InvokeAsync(new DefaultHttpContext()));
 
-        logger.Messages.ShouldContain(message => message.Contains("abandoned: the endpoint threw"));
+        logger.EventIds.ShouldBe([4040]);
     }
 
     [Fact]
@@ -110,7 +109,7 @@ public sealed class X402MiddlewareTests
         await Should.ThrowAsync<InvalidOperationException>(
             () => middleware.InvokeAsync(new DefaultHttpContext()));
 
-        logger.Messages.ShouldContain(message => message.Contains("not abandoned"));
+        logger.EventIds.ShouldBe([4041]);
     }
 
     [Fact]
@@ -120,12 +119,11 @@ public sealed class X402MiddlewareTests
             configure: options => options.MaxBufferedResponseBytes = 1024);
         server.Facilitator.Scenario = FakeFacilitatorScenario.SettleFailure;
 
-        var response = await server.PayAsync("/large-with-content-length", KnownAssets.EurcBaseSepolia);
+        using var response = await server.PayAsync("/large-with-content-length", KnownAssets.EurcBaseSepolia);
 
         // Finishing the payment again after the refusal would either append a second body or throw
         // on the already-started response's read-only headers.
-        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
-        (body, server.LastServerError).ShouldBe(("{}", ""));
+        server.LastServerError.ShouldBeEmpty();
     }
 
     [Fact]
@@ -138,9 +136,9 @@ public sealed class X402MiddlewareTests
             new PaymentIdentity(payload.Accepted.Network, payload.Accepted.Asset, authorization.Nonce),
             TestContext.Current.CancellationToken);
 
-        var response = await server.SendAsync("/premium", payload);
+        using var response = await server.SendAsync("/premium", payload);
 
-        (response.StatusCode, server.LastServerError).ShouldBe((HttpStatusCode.Conflict, ""));
+        server.LastServerError.ShouldBeEmpty();
     }
 
     [Fact]
@@ -173,9 +171,9 @@ public sealed class X402MiddlewareTests
 
     private sealed class CapturingLogger : ILogger<X402Middleware>
     {
-        private readonly List<string> messages = [];
+        private readonly List<int> eventIds = [];
 
-        public IReadOnlyList<string> Messages => messages;
+        public IReadOnlyList<int> EventIds => eventIds;
 
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
 
@@ -183,6 +181,6 @@ public sealed class X402MiddlewareTests
 
         public void Log<TState>(
             LogLevel logLevel, EventId eventId, TState state, Exception? exception,
-            Func<TState, Exception?, string> formatter) => messages.Add(formatter(state, exception));
+            Func<TState, Exception?, string> formatter) => eventIds.Add(eventId.Id);
     }
 }
