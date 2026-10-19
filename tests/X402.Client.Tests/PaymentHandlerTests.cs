@@ -258,4 +258,137 @@ public sealed class PaymentHandlerTests
 
         harness.Nonces.Distinct().Count().ShouldBe(2);
     }
+
+    // Every paywall here charges 0.01; a per-session limit of 0.01 therefore allows one payment.
+    private static void OnePaymentPerSession(X402ClientOptions options) =>
+        options.SetLimits(KnownAssets.EurcBaseSepolia, perRequest: 0.01m, perSession: 0.01m);
+
+    [Fact]
+    public async Task A_transport_failure_after_the_replay_was_sent_keeps_the_reservation()
+    {
+        // The server already holds a spendable authorization: crediting the budget back would let
+        // a server that drops the connection collect one authorization per retry.
+        using var harness = PayingClientHarness.CreateFlakyPaywall(
+            KnownAssets.EurcBaseSepolia, OnePaymentPerSession);
+        await Should.ThrowAsync<HttpRequestException>(
+            () => harness.Client.GetAsync("https://api.test/premium", TestContext.Current.CancellationToken));
+
+        await Should.ThrowAsync<SpendingLimitExceededException>(
+            () => harness.Client.GetAsync("https://api.test/premium", TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task A_second_402_keeps_the_reservation()
+    {
+        using var harness = PayingClientHarness.CreateAlwaysPaywalled(
+            KnownAssets.EurcBaseSepolia, configure: OnePaymentPerSession);
+        await Should.ThrowAsync<PaymentRejectedException>(
+            () => harness.Client.GetAsync("https://api.test/premium", TestContext.Current.CancellationToken));
+
+        await Should.ThrowAsync<SpendingLimitExceededException>(
+            () => harness.Client.GetAsync("https://api.test/premium", TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task A_signing_failure_returns_its_reservation_to_the_session_budget()
+    {
+        // Nothing left the process: the budget must not be consumed by a payment never made.
+        using var harness = PayingClientHarness.CreatePaywall(
+            KnownAssets.EurcBaseSepolia, OnePaymentPerSession);
+        harness.FailNextSignature = true;
+        await Should.ThrowAsync<InvalidOperationException>(
+            () => harness.Client.GetAsync("https://api.test/premium", TestContext.Current.CancellationToken));
+
+        var response = await harness.Client.GetAsync(
+            "https://api.test/premium", TestContext.Current.CancellationToken);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task A_requirement_valid_longer_than_the_client_allows_is_not_paid()
+    {
+        // The harness's requirements ask for 60 seconds.
+        using var harness = PayingClientHarness.CreatePaywall(
+            KnownAssets.EurcBaseSepolia, o => o.MaxAuthorizationValiditySeconds = 30);
+
+        await Should.ThrowAsync<NoAcceptablePaymentException>(
+            () => harness.Client.GetAsync("https://api.test/premium", TestContext.Current.CancellationToken));
+
+        harness.SignatureCount.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task A_body_larger_than_the_buffer_cap_still_reaches_a_free_endpoint()
+    {
+        using var harness = PayingClientHarness.Create(_ => new HttpResponseMessage(HttpStatusCode.OK));
+
+        var response = await harness.Client.PostAsync(
+            "https://api.test/upload", new ByteArrayContent(new byte[2 * 1024 * 1024]),
+            TestContext.Current.CancellationToken);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task A_402_for_a_body_too_large_to_replay_is_refused_without_signing()
+    {
+        using var harness = PayingClientHarness.CreatePaywall(
+            KnownAssets.EurcBaseSepolia, o => o.MaxBufferedRequestBytes = 16);
+
+        await Should.ThrowAsync<PaymentRejectedException>(
+            () => harness.Client.PostAsync(
+                "https://api.test/premium", new ByteArrayContent(new byte[1024]),
+                TestContext.Current.CancellationToken));
+
+        harness.SignatureCount.ShouldBe(0);
+    }
+
+    [Theory]
+    [InlineData("""{"x402Version":2,"resource":{"url":"https://api.test/x"},"accepts":[null]}""")]
+    [InlineData("""{"x402Version":2,"resource":{"url":"https://api.test/x"},"accepts":[{"scheme":"exact","network":"eip155:84532","amount":"10000","asset":"808456652fdb597867f38412077A9182bf77359F","payTo":"0x209693Bc6afc0C5328bA36FaF03C514EF312287C","maxTimeoutSeconds":60}]}""")]
+    public async Task A_malformed_offer_is_reported_as_unpayable(string demandJson)
+    {
+        // A null element, or an asset address without its 0x prefix (which signing would reject),
+        // must surface as the documented exception — not a NullReferenceException or ArgumentException.
+        using var harness = PayingClientHarness.Create(_ =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.PaymentRequired);
+            response.Headers.Add(
+                Transport.X402Headers.PaymentRequired,
+                Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(demandJson)));
+            return response;
+        });
+
+        await Should.ThrowAsync<NoAcceptablePaymentException>(
+            () => harness.Client.GetAsync("https://api.test/x", TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task A_demand_with_null_accepts_is_rejected_as_unusable()
+    {
+        using var harness = PayingClientHarness.Create(_ =>
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.PaymentRequired);
+            response.Headers.Add(
+                Transport.X402Headers.PaymentRequired,
+                Convert.ToBase64String("""{"x402Version":2,"resource":null,"accepts":null}"""u8.ToArray()));
+            return response;
+        });
+
+        await Should.ThrowAsync<PaymentRejectedException>(
+            () => harness.Client.GetAsync("https://api.test/x", TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task Earlier_preferences_outrank_later_ones()
+    {
+        using var harness = PayingClientHarness.CreatePaywall(
+            KnownAssets.UsdcBaseSepolia, KnownAssets.EurcBaseSepolia,
+            configure: o => o.Prefer(KnownAssets.EurcBaseSepolia).Prefer(KnownAssets.UsdcBaseSepolia));
+
+        await harness.Client.GetAsync("https://api.test/premium", TestContext.Current.CancellationToken);
+
+        harness.PaidAsset.ShouldBe(KnownAssets.EurcBaseSepolia.Address);
+    }
 }

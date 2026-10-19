@@ -38,6 +38,14 @@ internal sealed class X402ClientOptionsValidator : IValidateOptions<X402ClientOp
                 "X402PaymentHandler the first time it tried to buffer one for replay.");
         }
 
+        if (options.MaxAuthorizationValiditySeconds < 1)
+        {
+            failures.Add(
+                "X402ClientOptions.MaxAuthorizationValiditySeconds is " +
+                $"{options.MaxAuthorizationValiditySeconds}; it must be at least 1, or no " +
+                "requirement could ever be paid.");
+        }
+
         return failures.Count == 0
             ? ValidateOptionsResult.Success
             : ValidateOptionsResult.Fail(failures);

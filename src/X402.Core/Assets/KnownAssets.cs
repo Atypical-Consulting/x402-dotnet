@@ -4,9 +4,11 @@ using X402.Networks;
 namespace X402.Assets;
 
 /// <summary>
-/// Ready-made descriptors for the stablecoins this library ships profiles for. The catalogue is a
-/// convenience, not an allow-list: <see cref="AssetDescriptor"/> is public and any EIP-3009 token
-/// can be described by hand.
+/// Ready-made descriptors for the stablecoins this library ships profiles for. For a server the
+/// catalogue is a convenience, not an allow-list: <see cref="AssetDescriptor"/> is public and any
+/// EIP-3009 token can be described by hand. The paying client (<c>X402.Client</c>) is stricter: it
+/// only pays assets listed here, because it never signs against an EIP-712 domain taken from
+/// server-supplied data.
 /// </summary>
 /// <remarks>
 /// Every value below was read on-chain on 2026-07-24 (<c>name()</c>, <c>version()</c>,

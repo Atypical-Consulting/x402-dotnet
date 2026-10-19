@@ -181,4 +181,16 @@ public sealed class X402ClientOptionsValidationTests
     {
         Should.NotThrow(() => Validate(SeedOneValidLimit));
     }
+
+    [Fact]
+    public void A_non_positive_max_authorization_validity_fails_validation()
+    {
+        var exception = Should.Throw<OptionsValidationException>(() => Validate(o =>
+        {
+            SeedOneValidLimit(o);
+            o.MaxAuthorizationValiditySeconds = 0;
+        }));
+
+        exception.Message.ShouldContain("MaxAuthorizationValiditySeconds");
+    }
 }

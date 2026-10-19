@@ -50,6 +50,13 @@ public sealed class PayingClientHarness : IDisposable
     /// <summary>How many times the wrapped <see cref="IPaymentSigner"/> was asked to sign.</summary>
     public int SignatureCount => signer.Count;
 
+    /// <summary>When set, the next signing attempt throws instead of signing — a failure before anything was sent.</summary>
+    public bool FailNextSignature
+    {
+        get => signer.FailNext;
+        set => signer.FailNext = value;
+    }
+
     /// <summary>The <c>PAYMENT-SIGNATURE</c> header of the most recent request, if any.</summary>
     public string? LastPaymentHeader => recordingHandler.Requests.Count > 0
         ? recordingHandler.Requests[^1].PaymentHeader
@@ -111,12 +118,22 @@ public sealed class PayingClientHarness : IDisposable
     /// from a demand that decodes but simply carries no <see cref="PaymentRequired.Error"/>.
     /// </summary>
     public static PayingClientHarness CreateAlwaysPaywalled(
-        AssetDescriptor asset, string? rejectionReason = null, bool malformedSecondRejection = false) =>
-        CreatePaywall([asset], alwaysPaywall: true, configure: null, rejectionReason, malformedSecondRejection);
+        AssetDescriptor asset, string? rejectionReason = null, bool malformedSecondRejection = false,
+        Action<X402ClientOptions>? configure = null) =>
+        CreatePaywall([asset], alwaysPaywall: true, configure, rejectionReason, malformedSecondRejection);
+
+    /// <summary>
+    /// Builds a harness whose "server" demands payment for <paramref name="asset"/>, then drops
+    /// the connection (<see cref="HttpRequestException"/>) on the first paid replay — after the
+    /// signed authorization has already reached it — and accepts every paid replay after that.
+    /// </summary>
+    public static PayingClientHarness CreateFlakyPaywall(
+        AssetDescriptor asset, Action<X402ClientOptions>? configure = null) =>
+        CreatePaywall([asset], alwaysPaywall: false, configure, failFirstPaidReplay: true);
 
     private static PayingClientHarness CreatePaywall(
         IReadOnlyList<AssetDescriptor> assets, bool alwaysPaywall, Action<X402ClientOptions>? configure,
-        string? rejectionReason = null, bool malformedSecondRejection = false)
+        string? rejectionReason = null, bool malformedSecondRejection = false, bool failFirstPaidReplay = false)
     {
         var options = new X402ClientOptions();
         foreach (var asset in assets)
@@ -129,9 +146,18 @@ public sealed class PayingClientHarness : IDisposable
 
         configure?.Invoke(options);
 
+        var dropNextPaidReplay = failFirstPaidReplay;
         return new PayingClientHarness(options, (request, recorded) =>
-            RespondToPaywalled(
-                request, recorded, assets, alwaysPaywall, rejectionReason, malformedSecondRejection));
+        {
+            if (recorded.Payload is not null && dropNextPaidReplay)
+            {
+                dropNextPaidReplay = false;
+                throw new HttpRequestException("connection reset after the payment was received");
+            }
+
+            return RespondToPaywalled(
+                request, recorded, assets, alwaysPaywall, rejectionReason, malformedSecondRejection);
+        });
     }
 
     private static Task<HttpResponseMessage> RespondToPaywalled(
@@ -282,6 +308,8 @@ internal sealed class CountingPaymentSigner(IPaymentSigner inner) : IPaymentSign
 
     public int Count => count;
 
+    public bool FailNext { get; set; }
+
     public string Address => inner.Address;
 
     public ValueTask<ExactEvmPayload> SignAsync(
@@ -289,6 +317,12 @@ internal sealed class CountingPaymentSigner(IPaymentSigner inner) : IPaymentSign
         CancellationToken cancellationToken = default)
     {
         Interlocked.Increment(ref count);
+        if (FailNext)
+        {
+            FailNext = false;
+            throw new InvalidOperationException("the signer is configured to fail once");
+        }
+
         return inner.SignAsync(requirements, authorization, asset, cancellationToken);
     }
 }

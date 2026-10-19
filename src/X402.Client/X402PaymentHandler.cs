@@ -3,7 +3,6 @@ using System.Net;
 using System.Numerics;
 using System.Security.Cryptography;
 using System.Text.Json;
-using Nethereum.Util;
 using X402.Assets;
 using X402.Client.Signing;
 using X402.Client.Spending;
@@ -31,7 +30,15 @@ namespace X402.Client;
 /// The outgoing request's content is buffered before the first send. An <see cref="HttpContent"/>
 /// is not necessarily replayable — a <see cref="HttpContent.LoadIntoBufferAsync()"/> call is what
 /// makes a second send of the same content possible — so skipping this step would replay a POST
-/// with an empty body.
+/// with an empty body. A body whose declared length exceeds
+/// <see cref="X402ClientOptions.MaxBufferedRequestBytes"/> is sent unbuffered instead, and a 402
+/// for it is refused rather than paid.
+/// </item>
+/// <item>
+/// Once the signed authorization has been handed to the transport, its reservation is never
+/// released, whatever happens next (an exception, a cancellation, a second 402): the server may
+/// already hold — and settle — it. Only a payment that provably never left the process returns its
+/// budget.
 /// </item>
 /// </list>
 /// This client is deliberately general: it is not restricted to servers built with
@@ -67,7 +74,11 @@ public sealed class X402PaymentHandler : DelegatingHandler
 
         // 1. Buffer the content before the first send. Without this, a POST replayed at step 8
         // would go out with an empty body — the request stream can only be read once otherwise.
-        if (request.Content is not null)
+        // A body declared larger than the cap is sent as-is: most requests never meet a 402, and
+        // failing every large upload up front would break free endpoints sharing this client.
+        var replayable = request.Content?.Headers.ContentLength is not { } length
+            || length <= options.MaxBufferedRequestBytes;
+        if (request.Content is not null && replayable)
         {
             await request.Content
                 .LoadIntoBufferAsync(options.MaxBufferedRequestBytes, cancellationToken)
@@ -85,6 +96,14 @@ public sealed class X402PaymentHandler : DelegatingHandler
             ? headerValues.FirstOrDefault()
             : null;
         response.Dispose();
+
+        if (!replayable)
+        {
+            throw new PaymentRejectedException(
+                "The server demanded payment for a request whose body exceeds " +
+                $"MaxBufferedRequestBytes ({options.MaxBufferedRequestBytes} bytes), so it cannot " +
+                "be replayed with a payment attached. Nothing was signed.");
+        }
 
         // 3. Decode PAYMENT-REQUIRED. A 402 with no usable demand cannot be paid.
         if (!X402Codec.TryDecode<PaymentRequired>(paymentRequiredHeader, out var decoded, out var decodeError))
@@ -104,7 +123,8 @@ public sealed class X402PaymentHandler : DelegatingHandler
                 $"None of the {required.Accepts.Count} payment requirement(s) offered for " +
                 $"'{required.Resource.Url}' are payable: each was rejected for an unsupported " +
                 "scheme, a network outside AllowedNetworks, an asset outside the KnownAssets " +
-                "catalogue, or a malformed amount.");
+                "catalogue, a malformed amount, or a maxTimeoutSeconds outside " +
+                $"1..{options.MaxAuthorizationValiditySeconds} (MaxAuthorizationValiditySeconds).");
         }
 
         // 6. Reserve funds for the first candidate that fits within its limits. Nothing is signed
@@ -135,11 +155,13 @@ public sealed class X402PaymentHandler : DelegatingHandler
         var (requirement, asset, amount) = chosen.Value;
         HttpRequestMessage replay;
         HttpResponseMessage replayResponse;
+        var sent = false;
         try
         {
             // 7. Build the authorization. validAfter sits 60s in the past so a payer's clock
             // running slightly ahead of the facilitator's does not make the authorization
-            // "not yet valid"; validBefore follows the server's own stated timeout.
+            // "not yet valid"; validBefore follows the server's own stated timeout, already bounded
+            // by MaxAuthorizationValiditySeconds in SelectCandidates.
             var now = DateTimeOffset.UtcNow;
             var authorization = new Eip3009Authorization
             {
@@ -165,6 +187,8 @@ public sealed class X402PaymentHandler : DelegatingHandler
             replay = Clone(request);
             replay.Headers.Add(X402Headers.PaymentSignature, X402Codec.Encode(paymentPayload));
 
+            // From here on the authorization may be in the server's hands.
+            sent = true;
             replayResponse = await base.SendAsync(replay, cancellationToken).ConfigureAwait(false);
 
             // 9. A second 402 means the payment was refused; do not loop. The second PAYMENT-REQUIRED
@@ -198,13 +222,13 @@ public sealed class X402PaymentHandler : DelegatingHandler
                     : new PaymentRejectedException(message);
             }
         }
-        catch
+        catch when (!sent)
         {
-            // The reservation made at step 6 must not outlive a payment that never completed —
-            // otherwise a rejected or failed payment would permanently consume session budget.
-            // Scoped to end here, not around receipt exposure below: by the time this try block
-            // exits normally, the replay is known to have succeeded, and nothing past this point
-            // should ever release a reservation for a payment that actually settled.
+            // Released only while the authorization provably never left the process (signing or
+            // request building failed). Once sent, a reset connection, a timeout or a second 402
+            // says nothing about whether the server settled it — releasing then would let a
+            // hostile or flaky server collect one authorization per retry while the session
+            // budget never moves.
             spendTracker.Release(asset, amount);
             throw;
         }
@@ -235,6 +259,12 @@ public sealed class X402PaymentHandler : DelegatingHandler
         {
             var requirement = required.Accepts[index];
 
+            // The codec enforces member nullability, not element nullability: `accepts: [null]`.
+            if (requirement is null)
+            {
+                continue;
+            }
+
             if (!string.Equals(requirement.Scheme, "exact", StringComparison.Ordinal))
             {
                 continue;
@@ -258,6 +288,14 @@ public sealed class X402PaymentHandler : DelegatingHandler
             }
 
             if (!TryGetDisplayAmount(requirement.Amount, asset.Decimals, out var amount))
+            {
+                continue;
+            }
+
+            // validBefore is derived from this server-chosen figure: unbounded, an authorization
+            // could stay settleable for decades.
+            if (requirement.MaxTimeoutSeconds < 1
+                || requirement.MaxTimeoutSeconds > options.MaxAuthorizationValiditySeconds)
             {
                 continue;
             }
@@ -290,7 +328,9 @@ public sealed class X402PaymentHandler : DelegatingHandler
     {
         foreach (var candidate in KnownAssets.ForNetwork(requirement.Network))
         {
-            if (candidate.Address.IsTheSameAddress(requirement.Asset))
+            // The same comparison Eip3009TypedData.Build applies: a looser match here (one
+            // tolerating a missing 0x prefix) would pass selection, then fail at signing.
+            if (string.Equals(candidate.Address, requirement.Asset, StringComparison.OrdinalIgnoreCase))
             {
                 return candidate;
             }
