@@ -1,5 +1,7 @@
 ![x402-dotnet](.github/banner.png)
 
+**Website: [atypical-consulting.github.io/x402-dotnet](https://atypical-consulting.github.io/x402-dotnet/)**
+
 # x402-dotnet
 
 > **Accept and pay x402 v2 HTTP payments in .NET — EURC and USDC as equal, first-class settlement assets, with a server that never touches a signing key.**
@@ -25,7 +27,8 @@
 [![NuGet Atypical.X402.AspNetCore](https://img.shields.io/nuget/v/Atypical.X402.AspNetCore?logo=nuget&label=Atypical.X402.AspNetCore&color=004880)](https://www.nuget.org/packages/Atypical.X402.AspNetCore/)
 [![NuGet Atypical.X402.Client](https://img.shields.io/nuget/v/Atypical.X402.Client?logo=nuget&label=Atypical.X402.Client&color=004880)](https://www.nuget.org/packages/Atypical.X402.Client/)
 
-<!-- Rangée 5 — Docs (pas de site hébergé ; les ADR font office de documentation d'architecture) -->
+<!-- Rangée 5 — Docs (site GitHub Pages depuis site/ ; les ADR font office de documentation d'architecture) -->
+[![Website](https://img.shields.io/badge/website-github.io-2b59f5)](https://atypical-consulting.github.io/x402-dotnet/)
 [![Docs: ADRs](https://img.shields.io/badge/docs-architecture_decisions-3245b8)](docs/adr)
 
 ## Table of Contents
