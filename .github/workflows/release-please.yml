@@ -18,7 +18,9 @@ name: release-please
 on:
   push:
     branches: [main]
-  # Manual re-run: refreshes the release PR, or finishes a merged release whose run failed.
+  # Manual re-run: refreshes the release PR. It cannot finish a release whose publish job failed —
+  # the tag already exists, so release_created is false and publish is skipped. Retry that with
+  # "Re-run failed jobs" on the original run.
   workflow_dispatch:
 
 permissions:
