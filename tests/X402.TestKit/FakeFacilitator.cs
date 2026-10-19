@@ -320,12 +320,9 @@ public sealed class FakeFacilitator : IAsyncDisposable
 
         // 2. Validity window.
         // Both bounds are uint256 on the wire: 2^256-1 ("never expires") must not overflow a long.
-        if (!BigInteger.TryParse(authorization.ValidAfter, NumberStyles.None, CultureInfo.InvariantCulture, out var validAfter)
-            || !BigInteger.TryParse(authorization.ValidBefore, NumberStyles.None, CultureInfo.InvariantCulture, out var validBefore))
-        {
-            return X402ErrorReason.InvalidPayload;
-        }
-
+        // Eip3009TypedData.Build above already refused a non-integer bound as InvalidPayload.
+        var validAfter = BigInteger.Parse(authorization.ValidAfter, NumberStyles.None, CultureInfo.InvariantCulture);
+        var validBefore = BigInteger.Parse(authorization.ValidBefore, NumberStyles.None, CultureInfo.InvariantCulture);
         var now = new BigInteger(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
         if (validAfter > now)
         {

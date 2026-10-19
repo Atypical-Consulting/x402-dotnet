@@ -1,8 +1,6 @@
 using System.Net.Http.Json;
 using System.Numerics;
-using System.Security.Cryptography;
 using X402.Assets;
-using X402.Client.Signing;
 using X402.Json;
 using X402.Protocol;
 using X402.TestKit;
@@ -145,7 +143,8 @@ public sealed class FakeFacilitatorTests : IAsyncLifetime
     public async Task Verify_accepts_a_validBefore_of_two_to_the_256_minus_one()
     {
         // uint256 max is a common "never expires" bound; it must not overflow a long.
-        var request = await SignedWithWindowAsync(
+        var request = await TestData.SignedRequestAsync(
+            TestData.EurcSepoliaRequirements(),
             validAfter: "0", validBefore: (BigInteger.Pow(2, 256) - 1).ToString());
 
         var verify = await VerifyAsync(request);
@@ -156,7 +155,8 @@ public sealed class FakeFacilitatorTests : IAsyncLifetime
     [Fact]
     public async Task Settle_succeeds_with_a_validBefore_of_two_to_the_256_minus_one()
     {
-        var request = await SignedWithWindowAsync(
+        var request = await TestData.SignedRequestAsync(
+            TestData.EurcSepoliaRequirements(),
             validAfter: "0", validBefore: (BigInteger.Pow(2, 256) - 1).ToString());
 
         var response = await client.PostAsJsonAsync("/settle", request, X402Json.Options, TestContext.Current.CancellationToken);
@@ -168,7 +168,8 @@ public sealed class FakeFacilitatorTests : IAsyncLifetime
     [Fact]
     public async Task Verify_refuses_a_validAfter_above_long_max_with_the_validAfter_reason()
     {
-        var request = await SignedWithWindowAsync(
+        var request = await TestData.SignedRequestAsync(
+            TestData.EurcSepoliaRequirements(),
             validAfter: ((BigInteger)long.MaxValue + 1).ToString(),
             validBefore: (BigInteger.Pow(2, 256) - 1).ToString());
 
@@ -270,31 +271,4 @@ public sealed class FakeFacilitatorTests : IAsyncLifetime
         return verify.ShouldNotBeNull();
     }
 
-    // TestData takes DateTimeOffset bounds, which cannot express a uint256 above long.MaxValue.
-    private static async Task<FacilitatorRequest> SignedWithWindowAsync(string validAfter, string validBefore)
-    {
-        var requirements = TestData.EurcSepoliaRequirements();
-        var authorization = new Eip3009Authorization
-        {
-            From = TestData.PayerAddress,
-            To = requirements.PayTo,
-            Value = requirements.Amount,
-            ValidAfter = validAfter,
-            ValidBefore = validBefore,
-            Nonce = "0x" + Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant(),
-        };
-        var exact = await new PrivateKeyPaymentSigner(TestData.PayerPrivateKey)
-            .SignAsync(requirements, authorization, KnownAssets.EurcBaseSepolia);
-
-        return new FacilitatorRequest
-        {
-            PaymentPayload = new PaymentPayload
-            {
-                Resource = new ResourceInfo { Url = "https://api.example.com/premium" },
-                Accepted = requirements,
-                Payload = System.Text.Json.JsonSerializer.SerializeToElement(exact, X402Json.Options),
-            },
-            PaymentRequirements = requirements,
-        };
-    }
 }

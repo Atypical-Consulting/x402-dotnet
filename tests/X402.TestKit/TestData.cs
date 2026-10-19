@@ -74,19 +74,38 @@ public static class TestData
         DateTimeOffset? validAfter = null,
         DateTimeOffset? validBefore = null)
     {
+        var now = DateTimeOffset.UtcNow;
+        return await SignedPayloadAsync(
+            requirements,
+            (validAfter ?? now.AddSeconds(-60)).ToUnixTimeSeconds().ToString(),
+            (validBefore ?? now.AddSeconds(requirements.MaxTimeoutSeconds)).ToUnixTimeSeconds().ToString());
+    }
+
+    /// <summary>
+    /// Builds a facilitator request whose validity window is given as raw uint256 strings, for
+    /// bounds a <see cref="DateTimeOffset"/> cannot express (e.g. 2^256-1).
+    /// </summary>
+    public static async Task<FacilitatorRequest> SignedRequestAsync(
+        PaymentRequirements requirements, string validAfter, string validBefore) => new()
+    {
+        PaymentPayload = await SignedPayloadAsync(requirements, validAfter, validBefore),
+        PaymentRequirements = requirements,
+    };
+
+    private static async Task<PaymentPayload> SignedPayloadAsync(
+        PaymentRequirements requirements, string validAfter, string validBefore)
+    {
         var asset = KnownAssets.ForNetwork(requirements.Network)
             .Single(a => string.Equals(a.Address, requirements.Asset,
                 StringComparison.OrdinalIgnoreCase));
 
-        var now = DateTimeOffset.UtcNow;
         var authorization = new Eip3009Authorization
         {
             From = PayerAddress,
             To = requirements.PayTo,
             Value = requirements.Amount,
-            ValidAfter = (validAfter ?? now.AddSeconds(-60)).ToUnixTimeSeconds().ToString(),
-            ValidBefore = (validBefore ?? now.AddSeconds(requirements.MaxTimeoutSeconds))
-                .ToUnixTimeSeconds().ToString(),
+            ValidAfter = validAfter,
+            ValidBefore = validBefore,
             Nonce = "0x" + Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant(),
         };
 
