@@ -95,8 +95,11 @@ published separately for tooling that only needs the wire format.
 
 ## Quick Start
 
-Five minutes, no wallet required for the first run — the fake facilitator in step 4 settles
-anything well-formed without touching a network.
+Five minutes. Steps 1–3 and 5 build your own API and client; step 4 is the no-wallet first run,
+and it happens from a clone of this repository — `samples/PaidApi` with `UseFakeFacilitator=true`
+settles anything well-formed without touching a network. The fake facilitator lives in the
+unpublished `X402.TestKit` project, so it is not available to a project built from the packages
+alone.
 
 **1. Create the API and add the server package.**
 
@@ -136,9 +139,10 @@ app.MapGet("/weather", () => Results.Ok(new { City = "Brussels", Temp = 19 }));
 app.Run();
 ```
 
-**4. Run it offline, with no facilitator and no wallet**, to see the whole pipeline settle for
-real without leaving your machine — see [`samples/README.md`](samples/README.md#running-fully-offline)
-for the `UseFakeFacilitator` switch and its unedited console output.
+**4. Run the repository's sample offline, with no facilitator and no wallet**, to see the whole
+pipeline settle for real without leaving your machine — from a clone of this repository, see
+[`samples/README.md`](samples/README.md#running-fully-offline) for the `UseFakeFacilitator` switch
+and its unedited console output.
 
 **5. Pay for it from a .NET client:**
 
@@ -160,7 +164,8 @@ services.AddX402Client(options =>
     options.SetLimits(KnownAssets.EurcBaseSepolia, perRequest: 1m, perSession: 10m);
 });
 services.AddSingleton<IPaymentSigner>(new PrivateKeyPaymentSigner(myPrivateKey));
-services.AddHttpClient("PaidApi", c => c.BaseAddress = new Uri("http://localhost:5000"))
+// Use the URL your API prints on start-up (see its Properties/launchSettings.json).
+services.AddHttpClient("PaidApi", c => c.BaseAddress = new Uri("http://localhost:<port>"))
     .AddX402Payment();
 
 var http = services.BuildServiceProvider()
@@ -221,7 +226,9 @@ static async Task AnalyzeAsync(HttpContext context, IX402PaymentGate gate)
         await result.Result!.ExecuteAsync(context);
         return;
     }
-    // result.SettledAsset is set; the payment already happened.
+    // Payment is verified, not yet settled: it settles when this handler returns, and the
+    // response is withheld (402) if settlement fails. Don't do irreversible work that must be
+    // paid for first.
 }
 ```
 
@@ -263,7 +270,7 @@ touches:
 | `X402.AspNetCore` | `IX402PaymentGate` | Imperative gate for handlers whose price isn't known until the request is read |
 | `X402.AspNetCore` | `IFacilitatorClient` | `VerifyAsync`, `SettleAsync`, `GetSupportedAsync` — the facilitator wire calls |
 | `X402.Client` | `AddX402Client`, `AddX402Payment` | Register and attach the paying `DelegatingHandler` to an `HttpClient` |
-| `X402.Client` | `X402ClientOptions` | Allowed networks, asset preferences, per-asset spending limits |
+| `X402.Client` | `X402ClientOptions` | Allowed networks, asset preferences, per-asset spending limits, the longest authorization validity it will sign |
 | `X402.Client` | `IPaymentSigner`, `PrivateKeyPaymentSigner` | Where signing happens — bring your own for an HSM or KMS |
 | `X402.Client` | `HttpResponseMessageExtensions.GetPaymentReceipt` | Reads the settlement receipt off a response |
 | `X402.Core` | `KnownAssets`, `KnownNetworks` | Verified EURC/USDC profiles and CAIP-2 network identifiers for Base |
@@ -296,6 +303,24 @@ its own edges:
   `X402.AspNetCore` or `X402.Client` consults it to adjust which assets are offered or accepted.
   That decision is left to the operator, typically informed by running `--probe` once against the
   chosen facilitator.
+- **A settlement whose outcome is unknown is treated as failed.** If the facilitator times out or
+  the connection resets after the settle request went out, the facilitator may still have
+  broadcast the transfer. The server then withholds the content (402) and releases the
+  authorization for a retry, which fails on the already-used nonce: the payer may have paid for
+  content they did not receive. That is the deliberate side of the trade-off — content is never
+  delivered unpaid — and it is inherent to settling over HTTP; nothing here queries the chain to
+  resolve it.
+- **An authorization presented again re-delivers its resource, and only that resource.** Within
+  the ledger's retention (at least ten minutes, and never less than `MaxTimeoutSeconds`), the same
+  `PAYMENT-SIGNATURE` sent again to the resource it paid for gets the content again without a
+  second settlement — anyone who sees that header can do the same. Presented to any other
+  resource, it is refused; a settlement that failed is refused without running the endpoint. A
+  response with a status of 400 or above is never settled: the error is delivered and the
+  authorization stays usable.
+- **The client never takes back a payment it has sent.** Once `X402PaymentHandler` has sent a
+  signed authorization, its amount stays counted against the session limit even if the request
+  then fails or is refused, because the server may still settle it. Only a failure before
+  sending (signing, for example) returns the budget.
 - **`TestServer` (used throughout `X402.AspNetCore.Tests`) tolerates wire-level response
   inconsistencies a real transport does not.** A stale `Content-Length` surviving onto a rewritten
   402 — the endpoint's own declared length for a response the pipeline discards and replaces —
@@ -313,7 +338,7 @@ its own edges:
 - **`Nethereum.Signer.EIP712`** — client-side EIP-712 typed-data signing for `transferWithAuthorization`
 - **`Microsoft.Extensions.Http.Resilience`** — retry/timeout policy around facilitator calls
 - **`System.Text.Json`** with source-generated contexts for the wire codec
-- **xUnit v3 + Shouldly** — 245 tests across five test projects, none of them network-dependent
+- **xUnit v3 + Shouldly** — tests across five test projects, none of them network-dependent
 
 ## Roadmap
 
