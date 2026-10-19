@@ -67,6 +67,25 @@ public sealed class FakeFacilitatorTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Verify_refuses_a_non_integer_value_as_an_invalid_payload()
+    {
+        // Found by PaymentSignatureFuzzTests: the fake threw FormatException here, which TestServer
+        // rethrew into the server under test as a 500 instead of answering with a refusal.
+        var request = await TestData.SignedRequestAsync(TestData.EurcSepoliaRequirements());
+        var exact = request.PaymentPayload.AsExactEvm();
+        var altered = request with
+        {
+            PaymentPayload = request.PaymentPayload.WithExactEvm(
+                exact with { Authorization = exact.Authorization with { Value = "" } }),
+        };
+
+        var response = await client.PostAsJsonAsync("/verify", altered, X402Json.Options, TestContext.Current.CancellationToken);
+        var verify = await response.Content.ReadFromJsonAsync<VerifyResponse>(X402Json.Options, TestContext.Current.CancellationToken);
+
+        verify!.InvalidReason.ShouldBe(X402ErrorReason.InvalidPayload);
+    }
+
+    [Fact]
     public async Task Verify_rejects_an_amount_that_does_not_match_the_requirement()
     {
         var requirements = TestData.EurcSepoliaRequirements();

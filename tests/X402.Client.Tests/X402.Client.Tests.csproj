@@ -11,6 +11,8 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="FsCheck" />
+    <PackageReference Include="FsCheck.Xunit.v3" />
     <PackageReference Include="Shouldly" />
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio">
@@ -21,6 +23,12 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+  </ItemGroup>
+
+  <!-- The protocol-object generators and header-fuzz families, shared with the Core and AspNetCore tests. -->
+  <ItemGroup>
+    <Compile Include="..\X402.Core.Tests\X402Arbitraries.cs" Link="X402Arbitraries.cs" />
+    <Compile Include="..\X402.AspNetCore.Tests\HeaderFuzz.cs" Link="HeaderFuzz.cs" />
   </ItemGroup>
 
   <ItemGroup>
