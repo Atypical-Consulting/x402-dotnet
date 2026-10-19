@@ -114,7 +114,3 @@ which also packs and pushes the three packages to NuGet.org in that same workflo
 GITHUB_TOKEN-pushed tag does not itself retrigger `ci.yml`'s tag-triggered `publish`/`release`
 jobs; those exist for a manually pushed tag instead — see the comment at the top of
 `release-please.yml`).
-
-`release-please-config.json` pins `"release-as": "0.1.0"` to force the first release. **Remove that
-key in the first commit after `v0.1.0` is tagged** — release-please applies it unconditionally, so
-left in place every later release PR targets 0.1.0 again and nothing newer ever ships.
