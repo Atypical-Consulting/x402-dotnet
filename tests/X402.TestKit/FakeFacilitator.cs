@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Nethereum.ABI.EIP712;
 using Nethereum.Signer.EIP712;
 using Nethereum.Util;
 using X402.Assets;
@@ -294,7 +295,7 @@ public sealed class FakeFacilitator : IAsyncDisposable
         var asset = AssetFor(requirements);
         // A real facilitator answers a malformed numeric or nonce with a refusal, not a crash: a
         // throw here would escape TestServer into the caller as if the transport itself had failed.
-        Nethereum.ABI.EIP712.TypedData<Nethereum.ABI.EIP712.Domain> typedData;
+        TypedData<Domain> typedData;
         try { typedData = Eip3009TypedData.Build(requirements, authorization, asset); }
         catch (FormatException) { return X402ErrorReason.InvalidPayload; }
 
@@ -309,12 +310,12 @@ public sealed class FakeFacilitator : IAsyncDisposable
 
         // 2. Validity window.
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        if (!long.TryParse(authorization.ValidAfter, out var validAfter) || validAfter > now)
+        if (long.Parse(authorization.ValidAfter) > now)
         {
             return X402ErrorReason.InvalidExactEvmPayloadAuthorizationValidAfter;
         }
 
-        if (!long.TryParse(authorization.ValidBefore, out var validBefore) || validBefore < now)
+        if (long.Parse(authorization.ValidBefore) < now)
         {
             return X402ErrorReason.InvalidExactEvmPayloadAuthorizationValidBefore;
         }

@@ -13,7 +13,8 @@ namespace X402.PropertyTesting;
 /// </summary>
 internal static class X402Arbitraries
 {
-    private static readonly AssetDescriptor[] Assets =
+    /// <summary>Every catalogued asset the generators draw from.</summary>
+    public static AssetDescriptor[] Assets { get; } =
     [
         KnownAssets.EurcBaseSepolia, KnownAssets.UsdcBaseSepolia,
         KnownAssets.EurcBaseMainnet, KnownAssets.UsdcBaseMainnet,

@@ -10,11 +10,7 @@ namespace X402.Client.Tests;
 
 public sealed class SpendTrackerPropertyTests
 {
-    private static readonly AssetDescriptor[] Catalogue =
-    [
-        KnownAssets.EurcBaseSepolia, KnownAssets.UsdcBaseSepolia,
-        KnownAssets.EurcBaseMainnet, KnownAssets.UsdcBaseMainnet,
-    ];
+    private static readonly AssetDescriptor[] Catalogue = X402Arbitraries.Assets;
 
     // Whole cents, so every total is exact in decimal.
     private static Gen<decimal> Money(int minCents, int maxCents) =>
@@ -91,9 +87,9 @@ public sealed class SpendTrackerPropertyTests
             s =>
             {
                 var tracker = new InMemorySpendTracker(new X402ClientOptions().SetLimits(s.Asset, s.Cap, s.Cap));
-                tracker.EnsureWithinLimitsAndRecord(s.Asset with { Address = s.Asset.Address.ToUpperInvariant() }, s.Cap);
+                tracker.EnsureWithinLimitsAndRecord(s.Asset with { Address = "0x" + s.Asset.Address[2..].ToUpperInvariant() }, s.Cap);
 
                 return Record.Exception(() => tracker.EnsureWithinLimitsAndRecord(
-                    s.Asset with { Address = s.Asset.Address.ToLowerInvariant() }, 0.01m)) is SpendingLimitExceededException;
+                    s.Asset with { Address = "0x" + s.Asset.Address[2..].ToLowerInvariant() }, 0.01m)) is SpendingLimitExceededException;
             });
 }

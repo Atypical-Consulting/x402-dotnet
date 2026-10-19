@@ -11,7 +11,10 @@ public enum FuzzClass
     /// <summary>Arbitrary bytes, base64-encoded or sent raw as Latin-1.</summary>
     ArbitraryBytes,
 
-    /// <summary>A valid encoding corrupted so it is no longer base64, plus empty and blank values.</summary>
+    /// <summary>
+    /// A valid encoding truncated or with junk inserted, plus empty and blank values. Mostly invalid
+    /// base64; an inserted space still decodes, which exercises the decoder's whitespace leniency.
+    /// </summary>
     NotBase64,
 
     /// <summary>Base64 of arbitrary UTF-8 text.</summary>
@@ -181,7 +184,7 @@ internal static class HeaderFuzz
                     else if (Numerics.Contains(name) && random.Next(2) == 0)
                     {
                         var hostile = HostileNumerics[random.Next(HostileNumerics.Length)];
-                        obj[name] = random.Next(4) == 0 && decimal.TryParse(hostile, out var number)
+                        obj[name] = random.Next(4) == 0 && decimal.TryParse(hostile, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var number)
                             ? JsonValue.Create(number)
                             : JsonValue.Create(hostile);
                     }

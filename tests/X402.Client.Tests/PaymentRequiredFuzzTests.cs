@@ -96,7 +96,7 @@ public sealed class PaymentRequiredFuzzTests
 
     private static void WithLimits(X402ClientOptions options)
     {
-        foreach (var asset in new[] { KnownAssets.EurcBaseSepolia, KnownAssets.UsdcBaseSepolia, KnownAssets.EurcBaseMainnet, KnownAssets.UsdcBaseMainnet })
+        foreach (var asset in X402Arbitraries.Assets)
         {
             options.SetLimits(asset, perRequest: 10m, perSession: 10m);
         }
