@@ -62,13 +62,13 @@ internal static class HeaderFuzz
         FuzzClass.NotBase64 => Gen.Frequency(
             (1, Gen.Elements("", " ", "\t", "*", "=", "====", "A", "AA=", "AAA", "e30", "e30==")),
             (4, from json in validJson
-            from position in Gen.Choose(0, int.MaxValue)
-            from junk in Gen.Elements("*", " ", "=", "-", "_", "%", "!", ".")
-            from truncate in Gen.Elements(true, false)
-            let encoded = Base64(json)
-            select truncate
-                ? encoded[..(position % encoded.Length)] + junk
-                : encoded.Insert(position % encoded.Length, junk))),
+                from position in Gen.Choose(0, int.MaxValue)
+                from junk in Gen.Elements("*", " ", "=", "-", "_", "%", "!", ".")
+                from truncate in Gen.Elements(true, false)
+                let encoded = Base64(json)
+                select truncate
+                    ? encoded[..(position % encoded.Length)] + junk
+                    : encoded.Insert(position % encoded.Length, junk))),
         FuzzClass.Base64OfText =>
             from text in X402Arbitraries.Text
             select Base64(text),

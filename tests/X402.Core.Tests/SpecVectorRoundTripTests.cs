@@ -10,12 +10,12 @@ public sealed class SpecVectorRoundTripTests
 {
     private static readonly Dictionary<string, Type> Types = new()
     {
-        ["PaymentRequired"]     = typeof(PaymentRequired),
-        ["PaymentPayload"]      = typeof(PaymentPayload),
+        ["PaymentRequired"] = typeof(PaymentRequired),
+        ["PaymentPayload"] = typeof(PaymentPayload),
         ["PaymentRequirements"] = typeof(PaymentRequirements),
-        ["VerifyResponse"]      = typeof(VerifyResponse),
-        ["SettleResponse"]      = typeof(SettleResponse),
-        ["SupportedResponse"]   = typeof(SupportedResponse),
+        ["VerifyResponse"] = typeof(VerifyResponse),
+        ["SettleResponse"] = typeof(SettleResponse),
+        ["SupportedResponse"] = typeof(SupportedResponse),
     };
 
     public static TheoryData<string, int, string> Vectors()

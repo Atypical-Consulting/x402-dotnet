@@ -94,8 +94,12 @@ internal static class X402Arbitraries
         from nonce in Nonce
         select new Eip3009Authorization
         {
-            From = payer, To = to, Value = value,
-            ValidAfter = validAfter, ValidBefore = validBefore, Nonce = nonce,
+            From = payer,
+            To = to,
+            Value = value,
+            ValidAfter = validAfter,
+            ValidBefore = validBefore,
+            Nonce = nonce,
         };
 
     public static Gen<PaymentPayload> PaymentPayload { get; } =
@@ -121,7 +125,11 @@ internal static class X402Arbitraries
         from amount in OrNull(AtomicAmount)
         select new SettleResponse
         {
-            Success = success, ErrorReason = errorReason, Payer = payer,
-            Transaction = transaction, Network = asset.Network, Amount = amount,
+            Success = success,
+            ErrorReason = errorReason,
+            Payer = payer,
+            Transaction = transaction,
+            Network = asset.Network,
+            Amount = amount,
         };
 }

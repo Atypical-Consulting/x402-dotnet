@@ -87,10 +87,10 @@ public static class TestData
     /// </summary>
     public static async Task<FacilitatorRequest> SignedRequestAsync(
         PaymentRequirements requirements, string validAfter, string validBefore) => new()
-    {
-        PaymentPayload = await SignedPayloadAsync(requirements, validAfter, validBefore),
-        PaymentRequirements = requirements,
-    };
+        {
+            PaymentPayload = await SignedPayloadAsync(requirements, validAfter, validBefore),
+            PaymentRequirements = requirements,
+        };
 
     private static async Task<PaymentPayload> SignedPayloadAsync(
         PaymentRequirements requirements, string validAfter, string validBefore)
