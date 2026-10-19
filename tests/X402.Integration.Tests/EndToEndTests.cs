@@ -1,9 +1,9 @@
 using System.Net;
 using System.Net.Http.Json;
+using Nethereum.Signer;
 using X402.Assets;
 using X402.Client;
 using X402.Protocol;
-using Nethereum.Signer;
 using X402.TestKit;
 using X402.Transport;
 

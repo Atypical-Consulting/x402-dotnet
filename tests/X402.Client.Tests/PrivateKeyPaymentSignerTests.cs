@@ -26,15 +26,21 @@ public sealed class PrivateKeyPaymentSignerTests
         var asset = KnownAssets.EurcBaseSepolia;
         var requirements = new PaymentRequirements
         {
-            Scheme = "exact", Network = asset.Network, Amount = "10000",
-            Asset = asset.Address, PayTo = "0x209693Bc6afc0C5328bA36FaF03C514EF312287C",
+            Scheme = "exact",
+            Network = asset.Network,
+            Amount = "10000",
+            Asset = asset.Address,
+            PayTo = "0x209693Bc6afc0C5328bA36FaF03C514EF312287C",
             MaxTimeoutSeconds = 60,
         };
         var signer = new PrivateKeyPaymentSigner(PrivateKey);
         var authorization = new Eip3009Authorization
         {
-            From = signer.Address, To = requirements.PayTo, Value = requirements.Amount,
-            ValidAfter = "1740672089", ValidBefore = "1740672154",
+            From = signer.Address,
+            To = requirements.PayTo,
+            Value = requirements.Amount,
+            ValidAfter = "1740672089",
+            ValidBefore = "1740672154",
             Nonce = "0xf3746613c2d920b5fdabc0856f2aeb2d4f88ee6037b8cc5d04a71a4462f13480",
         };
 
@@ -55,15 +61,21 @@ public sealed class PrivateKeyPaymentSignerTests
         var asset = KnownAssets.EurcBaseSepolia;
         var requirements = new PaymentRequirements
         {
-            Scheme = "exact", Network = asset.Network, Amount = "10000",
-            Asset = asset.Address, PayTo = "0x209693Bc6afc0C5328bA36FaF03C514EF312287C",
+            Scheme = "exact",
+            Network = asset.Network,
+            Amount = "10000",
+            Asset = asset.Address,
+            PayTo = "0x209693Bc6afc0C5328bA36FaF03C514EF312287C",
             MaxTimeoutSeconds = 60,
         };
         var signer = new PrivateKeyPaymentSigner(PrivateKey);
         var authorization = new Eip3009Authorization
         {
-            From = signer.Address, To = requirements.PayTo, Value = "10000",
-            ValidAfter = "1", ValidBefore = "2",
+            From = signer.Address,
+            To = requirements.PayTo,
+            Value = "10000",
+            ValidAfter = "1",
+            ValidBefore = "2",
             Nonce = "0x" + new string('0', 64),
         };
 

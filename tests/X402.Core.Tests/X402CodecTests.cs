@@ -235,7 +235,10 @@ public sealed class X402CodecTests
         // PAYMENT-RESPONSE and lost the failure's errorReason.
         var failed = new SettleResponse
         {
-            Success = false, ErrorReason = "insufficient_funds", Transaction = null, Network = "eip155:84532",
+            Success = false,
+            ErrorReason = "insufficient_funds",
+            Transaction = null,
+            Network = "eip155:84532",
         };
 
         X402Codec.TryDecode<SettleResponse>(X402Codec.Encode(failed), out _, out _).ShouldBeTrue();

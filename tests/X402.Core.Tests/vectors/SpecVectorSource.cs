@@ -101,13 +101,10 @@ public static class SpecVectorSource
         }
 
         if (o.ContainsKey("accepts")) { yield return ("PaymentRequired", o); yield break; }
-        if (o.ContainsKey("accepted") && o.ContainsKey("payload"))
-                                       { yield return ("PaymentPayload", o); yield break; }
-        if (o.ContainsKey("isValid"))  { yield return ("VerifyResponse", o); yield break; }
-        if (o.ContainsKey("kinds"))    { yield return ("SupportedResponse", o); yield break; }
-        if (o.ContainsKey("success") && o.ContainsKey("transaction"))
-                                       { yield return ("SettleResponse", o); yield break; }
-        if (o.ContainsKey("scheme") && o.ContainsKey("payTo"))
-                                       { yield return ("PaymentRequirements", o); yield break; }
+        if (o.ContainsKey("accepted") && o.ContainsKey("payload")) { yield return ("PaymentPayload", o); yield break; }
+        if (o.ContainsKey("isValid")) { yield return ("VerifyResponse", o); yield break; }
+        if (o.ContainsKey("kinds")) { yield return ("SupportedResponse", o); yield break; }
+        if (o.ContainsKey("success") && o.ContainsKey("transaction")) { yield return ("SettleResponse", o); yield break; }
+        if (o.ContainsKey("scheme") && o.ContainsKey("payTo")) { yield return ("PaymentRequirements", o); yield break; }
     }
 }

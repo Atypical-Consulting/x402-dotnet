@@ -89,29 +89,29 @@ public sealed class PaymentAttempt
         PaymentPayload payload, PaymentRequirements requirements, AssetDescriptor asset,
         string? payer, PaymentIdentity identity, SettleResponse memorised,
         ResourceInfo resource, IReadOnlyList<PaymentRequirements> offered) => new()
-    {
-        CanContinue = true,
-        SettledAsset = asset,
-        Payer = payer,
-        Payload = payload,
-        Requirements = requirements,
-        Identity = identity,
-        MemorisedSettlement = memorised,
-        Demand = new PaymentRequired { Resource = resource, Accepts = offered },
-    };
+        {
+            CanContinue = true,
+            SettledAsset = asset,
+            Payer = payer,
+            Payload = payload,
+            Requirements = requirements,
+            Identity = identity,
+            MemorisedSettlement = memorised,
+            Demand = new PaymentRequired { Resource = resource, Accepts = offered },
+        };
 
     /// <summary>Builds the outcome for a freshly verified authorization awaiting settlement.</summary>
     internal static PaymentAttempt Accepted(
         PaymentPayload payload, PaymentRequirements requirements, AssetDescriptor asset,
         string? payer, PaymentIdentity identity,
         ResourceInfo resource, IReadOnlyList<PaymentRequirements> offered) => new()
-    {
-        CanContinue = true,
-        SettledAsset = asset,
-        Payer = payer,
-        Payload = payload,
-        Requirements = requirements,
-        Identity = identity,
-        Demand = new PaymentRequired { Resource = resource, Accepts = offered },
-    };
+        {
+            CanContinue = true,
+            SettledAsset = asset,
+            Payer = payer,
+            Payload = payload,
+            Requirements = requirements,
+            Identity = identity,
+            Demand = new PaymentRequired { Resource = resource, Accepts = offered },
+        };
 }
