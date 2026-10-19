@@ -54,9 +54,13 @@ public sealed record SettleResponse
     [JsonPropertyName("payer")]
     public string? Payer { get; init; }
 
-    /// <summary>Transaction hash, or an empty string when settlement failed.</summary>
+    /// <summary>
+    /// Transaction hash, or an empty string when settlement failed. Nullable because a
+    /// non-conformant facilitator may send <c>null</c> on failure; its <see cref="ErrorReason"/>
+    /// must still reach the payer.
+    /// </summary>
     [JsonPropertyName("transaction")]
-    public required string Transaction { get; init; }
+    public required string? Transaction { get; init; }
 
     /// <summary>Network the transaction was broadcast to, in CAIP-2 form.</summary>
     [JsonPropertyName("network")]

@@ -17,7 +17,11 @@ namespace X402.AspNetCore.Facilitator;
 /// attempt timeout or a 5xx is safe and desirable. <c>settle</c> moves money: if the facilitator
 /// answered at all, even with a 500, it may already have broadcast the transaction, so it is
 /// retried ONLY when no response was received at all (a transport failure or an attempt timeout),
-/// never on a received 5xx.
+/// never on a received 5xx. "No response" is not "not processed": a timeout or a connection reset
+/// after the request went out leaves the outcome unknown, and the facilitator may have broadcast
+/// anyway. The retry then fails on the already-used nonce, and the payment is refused although
+/// funds may have moved — the ambiguity is inherent to settling over HTTP; the ledger only
+/// guarantees content is never delivered unpaid.
 /// </para>
 /// <para>
 /// The two behaviors are kept apart structurally, not by inspecting the request URI: they are two
@@ -65,7 +69,7 @@ internal sealed class HttpFacilitatorClient(IHttpClientFactory httpClientFactory
             using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeoutSource.CancelAfter(MaxAttemptTimeout);
 
-            var response = await httpClient.GetAsync("supported", timeoutSource.Token);
+            using var response = await httpClient.GetAsync("supported", timeoutSource.Token);
             response.EnsureSuccessStatusCode();
 
             return await response.Content.ReadFromJsonAsync<SupportedResponse>(
@@ -77,6 +81,12 @@ internal sealed class HttpFacilitatorClient(IHttpClientFactory httpClientFactory
         {
             throw new FacilitatorException(
                 $"The facilitator at {httpClient.BaseAddress} could not be reached for /supported.",
+                exception);
+        }
+        catch (JsonException exception)
+        {
+            throw new FacilitatorException(
+                $"The facilitator returned a body for /supported that is not a valid {nameof(SupportedResponse)}.",
                 exception);
         }
     }
@@ -109,6 +119,7 @@ internal sealed class HttpFacilitatorClient(IHttpClientFactory httpClientFactory
                 exception);
         }
 
+        using var _ = response;
         if (!response.IsSuccessStatusCode)
         {
             throw new FacilitatorException(

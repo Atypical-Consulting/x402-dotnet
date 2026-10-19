@@ -287,6 +287,15 @@ public sealed class OptionsValidationTests
     }
 
     [Fact]
+    public void AspNetCore_does_not_reference_a_signing_library()
+    {
+        // ADR 0003: the server never holds a signing key — structurally, by never referencing a
+        // library that could use one.
+        typeof(X402Options).Assembly.GetReferencedAssemblies().Select(a => a.Name)
+            .ShouldNotContain(name => name!.StartsWith("Nethereum", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void Resolved_assets_keep_the_declared_order_and_carry_the_right_eip712_domain()
     {
         var services = new ServiceCollection();

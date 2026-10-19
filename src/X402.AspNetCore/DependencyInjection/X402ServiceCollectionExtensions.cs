@@ -65,6 +65,12 @@ public static class X402ServiceCollectionExtensions
         services.TryAddSingleton<IFeatureGate, AllowAllFeatureGate>();
         services.TryAddSingleton<IPaymentEventSink, LoggerPaymentEventSink>();
         services.TryAddSingleton<ISettlementLedger>(provider => new InMemorySettlementLedger(
+            // Remember a settlement at least as long as its authorization can still be presented
+            // (AuthorizeAsync refuses a validBefore beyond MaxTimeoutSeconds plus skew); forgetting
+            // sooner would settle it again.
+            retention: TimeSpan.FromSeconds(Math.Max(
+                600, provider.GetRequiredService<IOptions<X402Options>>().Value.MaxTimeoutSeconds)),
+            timeProvider: provider.GetRequiredService<TimeProvider>(),
             logger: provider.GetRequiredService<ILogger<InMemorySettlementLedger>>()));
 
         services.TryAddSingleton(TimeProvider.System);

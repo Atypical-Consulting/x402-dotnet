@@ -24,7 +24,14 @@ public enum SettlementSlotState
 /// <summary>The outcome of an acquisition attempt.</summary>
 /// <param name="State">What the ledger knows.</param>
 /// <param name="Existing">The memorised settlement, when the state is <c>AlreadySettled</c>.</param>
-public readonly record struct SettlementSlot(SettlementSlotState State, SettleResponse? Existing);
+/// <param name="Resource">
+/// The resource URL the memorised settlement paid for, when the state is <c>AlreadySettled</c>.
+/// An authorization presented again is honoured only for that resource. Required, with no
+/// default: an <c>AlreadySettled</c> slot without it refuses every replay. Pass <c>null</c> for the
+/// other states.
+/// </param>
+public readonly record struct SettlementSlot(
+    SettlementSlotState State, SettleResponse? Existing, string? Resource);
 
 /// <summary>
 /// Guarantees that one authorization settles at most once, whoever presents it and however often.
@@ -55,7 +62,9 @@ public interface ISettlementLedger
     ValueTask<SettlementSlot> AcquireAsync(
         PaymentIdentity identity, CancellationToken cancellationToken = default);
 
-    /// <summary>Memorises the settlement outcome of an acquired authorization.</summary>
+    /// <summary>
+    /// Memorises the settlement outcome of an acquired authorization, and the resource it paid for.
+    /// </summary>
     /// <remarks>
     /// Always persists the given outcome: a settlement that already happened on-chain must never be
     /// discarded, so this never throws. If the identity is not currently held as in-flight — never
@@ -65,7 +74,8 @@ public interface ISettlementLedger
     /// and logs the conflict; completing it again with the same outcome is a harmless no-op.
     /// </remarks>
     ValueTask CompleteAsync(
-        PaymentIdentity identity, SettleResponse response, CancellationToken cancellationToken = default);
+        PaymentIdentity identity, SettleResponse response, string resource,
+        CancellationToken cancellationToken = default);
 
     /// <summary>Releases an acquired authorization that was never settled.</summary>
     /// <remarks>

@@ -27,6 +27,8 @@ public sealed class FakeFacilitator : IAsyncDisposable
     private int settleCallCount;
     private int pendingFailureCalls;
     private FakeFacilitatorScenario pendingFailureScenario;
+    private int pendingSettleFailureCalls;
+    private FakeFacilitatorScenario pendingSettleFailureScenario;
     private volatile string? lastRequestBody;
 
     /// <summary>Starts the facilitator on an in-memory transport.</summary>
@@ -106,6 +108,19 @@ public sealed class FakeFacilitator : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Makes the next <paramref name="count"/> calls to <c>/settle</c> only behave as
+    /// <paramref name="scenario"/> — <c>/verify</c> is unaffected — then reverts to <see cref="Scenario"/>.
+    /// </summary>
+    public void FailNextSettleCalls(int count, FakeFacilitatorScenario scenario)
+    {
+        lock (scenarioGate)
+        {
+            pendingSettleFailureCalls = count;
+            pendingSettleFailureScenario = scenario;
+        }
+    }
+
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
@@ -161,7 +176,7 @@ public sealed class FakeFacilitator : IAsyncDisposable
     private async Task<IResult> HandleSettleAsync(HttpContext context)
     {
         Interlocked.Increment(ref settleCallCount);
-        var scenario = ConsumeScenario();
+        var scenario = ConsumeScenario(settle: true);
 
         if (scenario == FakeFacilitatorScenario.NetworkFailure)
         {
@@ -223,10 +238,16 @@ public sealed class FakeFacilitator : IAsyncDisposable
 
     /// <summary>Consumes one pending forced-scenario call if <see cref="FailNextCalls"/> armed one,
     /// otherwise falls back to <see cref="Scenario"/>.</summary>
-    private FakeFacilitatorScenario ConsumeScenario()
+    private FakeFacilitatorScenario ConsumeScenario(bool settle = false)
     {
         lock (scenarioGate)
         {
+            if (settle && pendingSettleFailureCalls > 0)
+            {
+                pendingSettleFailureCalls--;
+                return pendingSettleFailureScenario;
+            }
+
             if (pendingFailureCalls > 0)
             {
                 pendingFailureCalls--;

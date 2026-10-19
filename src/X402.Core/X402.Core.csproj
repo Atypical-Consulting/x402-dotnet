@@ -6,7 +6,7 @@
          NOT renamed — only the distribution identity is. See ADR 0004. -->
     <PackageId>Atypical.X402.Core</PackageId>
     <RootNamespace>X402</RootNamespace>
-    <Description>Core types, JSON contracts and transport codec for the x402 v2 payment protocol. Transport-agnostic and dependency-free.</Description>
+    <Description>Core types, JSON contracts, transport codec and verified EURC/USDC asset profiles for the x402 v2 payment protocol. No ASP.NET Core, signing or network dependency.</Description>
   </PropertyGroup>
 
   <ItemGroup>

@@ -36,6 +36,18 @@ public sealed class BufferingTests
     }
 
     [Fact]
+    public async Task An_error_response_beyond_the_cap_is_not_charged()
+    {
+        await using var server = await PaidServerFixture.StartAsync(
+            configure: options => options.MaxBufferedResponseBytes = 1024);
+
+        var response = await server.PayAsync("/large-error", KnownAssets.EurcBaseSepolia);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.InternalServerError);
+        server.Facilitator.SettleCallCount.ShouldBe(0);
+    }
+
+    [Fact]
     public async Task A_settlement_failing_exactly_at_the_cap_is_still_refused_before_anything_streams()
     {
         // The write that first crosses the cap is what forces settlement, and it fails before that
@@ -185,5 +197,59 @@ public sealed class BufferingTests
 
         response.StatusCode.ShouldBe(HttpStatusCode.InternalServerError);
         server.LastServerError.ShouldBe("boom");
+    }
+
+    [Fact]
+    public async Task A_file_response_is_withheld_when_settlement_fails()
+    {
+        // Results.File on a physical path goes through IHttpResponseBodyFeature.SendFileAsync,
+        // which must not bypass the buffer and reach the client before settlement.
+        await using var server = await PaidServerFixture.StartAsync();
+        server.Facilitator.Scenario = FakeFacilitatorScenario.SettleFailure;
+
+        var response = await server.PayAsync("/file", KnownAssets.EurcBaseSepolia);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.PaymentRequired);
+        (await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))
+            .ShouldNotContain(PaidServerFixture.PaidFileContent);
+    }
+
+    [Fact]
+    public async Task A_file_response_is_delivered_once_settled()
+    {
+        await using var server = await PaidServerFixture.StartAsync();
+
+        var response = await server.PayAsync("/file", KnownAssets.EurcBaseSepolia);
+
+        (await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))
+            .ShouldBe(PaidServerFixture.PaidFileContent);
+    }
+
+    [Fact]
+    public async Task A_cached_response_body_keeps_streaming_past_the_cap()
+    {
+        // The stream fetched before the cap was crossed must keep working after settlement,
+        // not hit a disposed buffer and truncate a response the payer was charged for.
+        await using var server = await PaidServerFixture.StartAsync(
+            configure: options => options.MaxBufferedResponseBytes = 1024);
+
+        var response = await server.PayAsync("/cached-body", KnownAssets.EurcBaseSepolia);
+
+        (await response.Content.ReadAsByteArrayAsync(TestContext.Current.CancellationToken))
+            .Length.ShouldBe(64 * 1024);
+    }
+
+    [Fact]
+    public async Task An_unflushed_body_writer_past_the_cap_settles_exactly_once()
+    {
+        // The writer's bytes only reach the buffer when flushed; flushing them after settling
+        // would cross the cap and settle the same authorization a second time.
+        await using var server = await PaidServerFixture.StartAsync(
+            configure: options => options.MaxBufferedResponseBytes = 1024);
+
+        var response = await server.PayAsync("/unflushed-writer", KnownAssets.EurcBaseSepolia);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        server.Facilitator.SettleCallCount.ShouldBe(1);
     }
 }

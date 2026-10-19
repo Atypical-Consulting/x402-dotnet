@@ -40,7 +40,11 @@ namespace X402.AspNetCore.Tests;
 /// <c>/analyze-ignoring-refusal</c> (deliberately buggy: ignores a gate refusal and serves content
 /// anyway, for <c>PaymentGateTests</c>), and <c>/analyze-ignoring-refusal-overflowing</c>
 /// (ignores a gate refusal AND overflows the buffer in a swallowed broad catch, for
-/// <c>BufferingTests</c>). Supplying <c>routes</c> replaces this default set
+/// <c>BufferingTests</c>), <c>/not-found</c> (priced, answers 404), <c>/file</c> (priced, serves a
+/// physical file through <c>SendFileAsync</c>), <c>/cached-body</c> (priced, streams 64 KiB through
+/// one cached <c>Response.Body</c> reference), <c>/unflushed-writer</c> (priced, writes 64 KiB into
+/// <c>Response.BodyWriter</c> and never flushes) and <c>/premium-gated</c> (priced by the route
+/// AND calling the gate). Supplying <c>routes</c> replaces this default set
 /// entirely, for tests that need their own route table (see <c>RouteMappingTests</c>). Any path
 /// not otherwise mapped answers 200 OK, so a route declared but never paid for still has
 /// something to reach.
@@ -214,7 +218,14 @@ public sealed class PaidServerFixture : IAsyncDisposable
                                 .Map("/large", premiumPrices)
                                 .Map("/large-swallowing", premiumPrices)
                                 .Map("/large-with-content-length", premiumPrices)
-                                .Map("/large-swallowing-with-content-length", premiumPrices);
+                                .Map("/large-swallowing-with-content-length", premiumPrices)
+                                .Map("/not-found", premiumPrices)
+                                .Map("/large-error", premiumPrices)
+                                .Map("/slow", premiumPrices)
+                                .Map("/file", premiumPrices)
+                                .Map("/cached-body", premiumPrices)
+                                .Map("/unflushed-writer", premiumPrices)
+                                .Map("/premium-gated", premiumPrices);
                         });
                     }
 
@@ -232,6 +243,17 @@ public sealed class PaidServerFixture : IAsyncDisposable
                         endpoints.MapGet(
                             "/large-swallowing-with-content-length",
                             WriteLargeBodyWithDeclaredContentLengthSwallowingExceptionsAsync);
+                        endpoints.MapGet("/not-found", () => Results.NotFound());
+                        endpoints.MapGet("/large-error", WriteLargeErrorBodyAsync);
+                        endpoints.MapGet("/slow", WaitForTheClientToLeaveAsync);
+                        endpoints.MapGet("/file", () => Results.File(PaidFilePath.Value, "text/plain"));
+                        endpoints.MapGet("/cached-body", WriteLargeBodyThroughCachedStreamAsync);
+                        endpoints.MapGet("/unflushed-writer", WriteLargeBodyWithoutFlushingAsync);
+                        endpoints.MapGet("/premium-gated", async (IX402PaymentGate gate) =>
+                        {
+                            var result = await gate.RequireAsync(premiumPrices);
+                            return result.CanContinue ? Results.Text("premium content") : result.Result!;
+                        });
                         endpoints.MapPost("/analyze", AnalyzeAsync);
                         endpoints.MapPost("/by-size", BySizeAsync);
                         endpoints.MapGet("/analyze-ignoring-refusal", IgnoringRefusalAsync);
@@ -352,6 +374,46 @@ public sealed class PaidServerFixture : IAsyncDisposable
         await Facilitator.DisposeAsync();
     }
 
+    /// <summary>The content <c>/file</c> serves, written once to a temporary file.</summary>
+    public const string PaidFileContent = "paid file content";
+
+    private static readonly Lazy<string> PaidFilePath = new(() =>
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"x402-paid-{Guid.NewGuid():N}.txt");
+        File.WriteAllText(path, PaidFileContent);
+        return path;
+    });
+
+    /// <summary>
+    /// Fetches <see cref="HttpResponse.Body"/> once and keeps writing through that reference, the
+    /// way <c>Stream.CopyToAsync</c> and <c>Results.Stream</c> do — it must survive the cap being
+    /// crossed mid-stream.
+    /// </summary>
+    private static async Task WriteLargeBodyThroughCachedStreamAsync(HttpContext context)
+    {
+        var body = context.Response.Body;
+        var chunk = new byte[4096];
+        Array.Fill(chunk, (byte)'x');
+        for (var i = 0; i < 16; i++)
+        {
+            await body.WriteAsync(chunk, context.RequestAborted);
+        }
+    }
+
+    /// <summary>Writes 64 KiB through <see cref="HttpResponse.BodyWriter"/> and returns without flushing it.</summary>
+    private static Task WriteLargeBodyWithoutFlushingAsync(HttpContext context)
+    {
+        var writer = context.Response.BodyWriter;
+        for (var i = 0; i < 16; i++)
+        {
+            var span = writer.GetSpan(4096);
+            span[..4096].Fill((byte)'x');
+            writer.Advance(4096);
+        }
+
+        return Task.CompletedTask;
+    }
+
     private static async Task WriteLargeBodyAsync(HttpContext context)
     {
         var chunk = new byte[4096];
@@ -429,6 +491,28 @@ public sealed class PaidServerFixture : IAsyncDisposable
             {
                 return;
             }
+        }
+    }
+
+    /// <summary>Sets 500 and writes 64 KiB, so an error response crosses the buffer cap.</summary>
+    private static async Task WriteLargeErrorBodyAsync(HttpContext context)
+    {
+        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+        await WriteLargeBodyAsync(context);
+    }
+
+    /// <summary>
+    /// Waits until the client disconnects, then returns 200 normally with an empty body — a slow
+    /// endpoint finishing after its caller timed out.
+    /// </summary>
+    private static async Task WaitForTheClientToLeaveAsync(HttpContext context)
+    {
+        try
+        {
+            await Task.Delay(Timeout.Infinite, context.RequestAborted);
+        }
+        catch (OperationCanceledException)
+        {
         }
     }
 

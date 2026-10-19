@@ -1,4 +1,5 @@
 using System.IO.Pipelines;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 
 namespace X402.AspNetCore.Engine;
@@ -50,9 +51,6 @@ internal sealed class BufferingResponseBodyFeature : IHttpResponseBodyFeature
     /// </summary>
     public bool Poisoned { get; private set; }
 
-    /// <summary>Number of bytes currently held.</summary>
-    public long BufferedLength => buffer?.Length ?? 0;
-
     public Stream Stream
     {
         get
@@ -85,13 +83,24 @@ internal sealed class BufferingResponseBodyFeature : IHttpResponseBodyFeature
 
     public void DisableBuffering() { /* the engine drives buffering, not the application */ }
 
+    // Not yet overflowed, the file goes through Stream like any other write, so the cap — and
+    // settlement before anything leaves the process — applies to it too.
     public Task SendFileAsync(string path, long offset, long? count, CancellationToken cancellationToken)
         => Overflowed
             ? inner.SendFileAsync(path, offset, count, cancellationToken)
-            : OverflowThenAsync(ct => inner.SendFileAsync(path, offset, count, ct), cancellationToken);
+            : SendFileFallback.SendFileAsync(Stream, path, offset, count, cancellationToken);
 
     public Task StartAsync(CancellationToken cancellationToken = default)
         => Overflowed ? inner.StartAsync(cancellationToken) : Task.CompletedTask;
+
+    /// <summary>Pushes whatever a not-yet-flushed <see cref="Writer"/> holds into the buffer.</summary>
+    public async Task FlushWriterAsync(CancellationToken cancellationToken)
+    {
+        if (writer is not null && !Overflowed && !Poisoned)
+        {
+            await writer.FlushAsync(cancellationToken);
+        }
+    }
 
     /// <summary>Called by the engine after a successful settlement: releases the held bytes.</summary>
     public async Task FlushBufferAsync(CancellationToken cancellationToken)
@@ -135,8 +144,7 @@ internal sealed class BufferingResponseBodyFeature : IHttpResponseBodyFeature
     internal async Task<bool> CheckCapacityAsync(CancellationToken cancellationToken)
     {
         // Poisoned is terminal: never re-invoke settlement once it has already been attempted and
-        // failed here, however this got called again (a stale Stream/Writer reference held across
-        // the failing write, or SendFileAsync's own path below).
+        // failed here, however this got called again.
         if (Poisoned)
         {
             return false;
@@ -167,19 +175,11 @@ internal sealed class BufferingResponseBodyFeature : IHttpResponseBodyFeature
 
         held.Position = 0;
         await held.CopyToAsync(inner.Stream, cancellationToken);
-        await held.DisposeAsync();
+        // Emptied, not disposed: an endpoint may have cached Response.Body (or a PipeWriter over
+        // it) and keeps writing through it — CapacityCheckingStream forwards those writes now.
+        held.SetLength(0);
+        held.Capacity = 0;
         return true;
-    }
-
-    private async Task OverflowThenAsync(
-        Func<CancellationToken, Task> action, CancellationToken cancellationToken)
-    {
-        if (!await CheckCapacityAsync(cancellationToken))
-        {
-            throw new BufferingSettlementFailedException();
-        }
-
-        await action(cancellationToken);
     }
 
     private Stream CapacityChecked() => capacityCheckingStream ??= new CapacityCheckingStream(buffer!, this);
@@ -187,7 +187,9 @@ internal sealed class BufferingResponseBodyFeature : IHttpResponseBodyFeature
     /// <summary>
     /// Wraps the in-memory buffer so every write is followed by <see cref="CheckCapacityAsync"/> —
     /// the hook <see cref="IHttpResponseBodyFeature"/> itself does not provide. Every member simply
-    /// delegates to the wrapped <see cref="MemoryStream"/>, plus that one call after a write.
+    /// delegates to the wrapped <see cref="MemoryStream"/>, plus that one call after a write. Once
+    /// the owner has overflowed, writes and flushes go straight to the real response stream
+    /// instead, so a caller holding on to this instance keeps working.
     /// </summary>
     private sealed class CapacityCheckingStream(MemoryStream inner, BufferingResponseBodyFeature owner)
         : Stream
@@ -206,10 +208,10 @@ internal sealed class BufferingResponseBodyFeature : IHttpResponseBodyFeature
             set => inner.Position = value;
         }
 
-        public override void Flush() => inner.Flush();
+        public override void Flush() => (Passthrough() ?? inner).Flush();
 
         public override Task FlushAsync(CancellationToken cancellationToken) =>
-            inner.FlushAsync(cancellationToken);
+            (Passthrough() ?? inner).FlushAsync(cancellationToken);
 
         public override int Read(byte[] buffer, int offset, int count) =>
             inner.Read(buffer, offset, count);
@@ -220,6 +222,12 @@ internal sealed class BufferingResponseBodyFeature : IHttpResponseBodyFeature
 
         public override void Write(byte[] buffer, int offset, int count)
         {
+            if (Passthrough() is { } target)
+            {
+                target.Write(buffer, offset, count);
+                return;
+            }
+
             inner.Write(buffer, offset, count);
             // Stream has no synchronous capacity hook to call into: block on the (usually already
             // completed) check rather than leave a write path that never enforces the cap. Safe
@@ -234,6 +242,12 @@ internal sealed class BufferingResponseBodyFeature : IHttpResponseBodyFeature
         public override async Task WriteAsync(
             byte[] buffer, int offset, int count, CancellationToken cancellationToken)
         {
+            if (Passthrough() is { } target)
+            {
+                await target.WriteAsync(buffer.AsMemory(offset, count), cancellationToken);
+                return;
+            }
+
             await inner.WriteAsync(buffer, offset, count, cancellationToken);
             if (!await owner.CheckCapacityAsync(cancellationToken))
             {
@@ -244,12 +258,27 @@ internal sealed class BufferingResponseBodyFeature : IHttpResponseBodyFeature
         public override async ValueTask WriteAsync(
             ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
         {
+            if (Passthrough() is { } target)
+            {
+                await target.WriteAsync(buffer, cancellationToken);
+                return;
+            }
+
             await inner.WriteAsync(buffer, cancellationToken);
             if (!await owner.CheckCapacityAsync(cancellationToken))
             {
                 throw new BufferingSettlementFailedException();
             }
         }
+
+        /// <summary>
+        /// The real response stream once the owner has overflowed, null while still buffering;
+        /// throws once poisoned, the same way <see cref="Stream"/> does.
+        /// </summary>
+        private Stream? Passthrough() =>
+            owner.Poisoned ? throw new BufferingSettlementFailedException()
+            : owner.Overflowed ? owner.inner.Stream
+            : null;
     }
 }
 

@@ -4,7 +4,7 @@
     <!-- See ADR 0004: the bare `X402.Client` id belongs to another author on nuget.org. -->
     <PackageId>Atypical.X402.Client</PackageId>
     <RootNamespace>X402.Client</RootNamespace>
-    <Description>Client-side signing for the x402 v2 payment protocol: builds and signs EIP-3009 transferWithAuthorization typed data.</Description>
+    <Description>Pay for x402 v2 requests from .NET: a DelegatingHandler that answers HTTP 402 by signing an EIP-3009 transferWithAuthorization and replaying the request, with per-asset spending limits (EURC and USDC never share a cap).</Description>
   </PropertyGroup>
 
   <ItemGroup>

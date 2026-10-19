@@ -161,4 +161,33 @@ public sealed class PaymentGateTests
         server.LoggedErrors.ShouldContain(
             message => message.Contains("ignored PaymentGateResult.CanContinue"));
     }
+
+    [Fact]
+    public async Task Gating_a_route_already_priced_by_UseX402_fails_loudly_without_charging()
+    {
+        // Pricing a request twice nested a second buffer inside the first: the route's payment
+        // settled while the client received an empty 409.
+        await using var server = await PaidServerFixture.StartAsync();
+
+        var response = await server.PayAsync("/premium-gated", KnownAssets.EurcBaseSepolia);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.InternalServerError);
+        server.LastServerError.ShouldContain("already priced");
+        server.Facilitator.SettleCallCount.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task A_gate_priced_in_an_asset_the_server_does_not_accept_fails_loudly()
+    {
+        // Advertising an unaccepted asset would refuse every correctly signed payment for it.
+        await using var server = await PaidServerFixture.StartAsync(
+            configure: options => options.Assets.RemoveAt(1), // keep EURC, drop USDC
+            routes: _ => { });
+
+        var response = await server.Client.PostAsJsonAsync(
+            "/analyze", new { Tokens = 1 }, TestContext.Current.CancellationToken);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.InternalServerError);
+        server.LastServerError.ShouldContain("does not accept");
+    }
 }

@@ -83,4 +83,12 @@ public sealed class CoreArchitectureTests
 
         networkingAndTelemetryTypes.ShouldBeEmpty();
     }
+
+    [Fact]
+    public void Core_does_not_reference_aspnetcore_or_a_signing_library()
+    {
+        Core.GetReferencedAssemblies().Select(a => a.Name).ShouldNotContain(name =>
+            name!.StartsWith("Microsoft.AspNetCore", StringComparison.Ordinal)
+            || name.StartsWith("Nethereum", StringComparison.Ordinal));
+    }
 }

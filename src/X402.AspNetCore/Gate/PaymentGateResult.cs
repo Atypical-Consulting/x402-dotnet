@@ -17,6 +17,12 @@ public sealed class PaymentGateResult
     }
 
     /// <summary>Whether the handler may proceed.</summary>
+    /// <remarks>
+    /// True means the payment is verified, not yet settled: settlement runs once the handler
+    /// returns (or once its response outgrows <c>MaxBufferedResponseBytes</c>), and if it fails the
+    /// buffered response is replaced by a 402. Do not perform irreversible work that must be paid
+    /// for before the handler returns.
+    /// </remarks>
     public bool CanContinue { get; }
 
     /// <summary>
@@ -38,7 +44,10 @@ public sealed class PaymentGateResult
     /// </remarks>
     public X402HandlerResult? Result { get; }
 
-    /// <summary>The asset the payer chose, once payment is accepted.</summary>
+    /// <summary>
+    /// The asset the payer chose, once payment is accepted — verified, and settled only after the
+    /// handler returns (see <see cref="CanContinue"/>).
+    /// </summary>
     public AssetDescriptor? SettledAsset { get; }
 
     /// <summary>The payer's address, once payment is accepted.</summary>

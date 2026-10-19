@@ -22,19 +22,43 @@ public sealed class X402ClientOptions
     public IList<string> AllowedNetworks { get; } = [];
 
     /// <summary>How much of a request body is buffered so the request can be replayed.</summary>
+    /// <remarks>
+    /// A request whose declared <c>Content-Length</c> exceeds this is sent unbuffered: it works
+    /// normally against an endpoint that does not ask for payment, and a 402 for it is refused with
+    /// <see cref="PaymentRejectedException"/> since its body cannot be replayed. A body of unknown
+    /// length is buffered, and fails with <see cref="HttpRequestException"/> if it exceeds this.
+    /// </remarks>
     public long MaxBufferedRequestBytes { get; set; } = 1024 * 1024;
+
+    /// <summary>
+    /// The longest authorization validity this agent signs, in seconds. A requirement whose
+    /// <c>maxTimeoutSeconds</c> is above this (or below 1) is not paid. Defaults to 3600, the
+    /// most an <c>X402.AspNetCore</c> server can ask for.
+    /// </summary>
+    /// <remarks>
+    /// A signed authorization stays spendable until its <c>validBefore</c>, which follows the
+    /// server's <c>maxTimeoutSeconds</c>. Without this bound a server could ask for one valid for
+    /// decades.
+    /// </remarks>
+    public int MaxAuthorizationValiditySeconds { get; set; } = 3600;
 
     /// <summary>Asset symbols in the agent's order of preference.</summary>
     public IReadOnlyList<string> Preferences => preferences;
 
-    /// <summary>Declares a preference for an asset, ahead of previously declared ones.</summary>
+    /// <summary>
+    /// Declares a preference for an asset, ranked after previously declared ones: the first
+    /// declared preference wins.
+    /// </summary>
     public X402ClientOptions Prefer(AssetDescriptor asset)
     {
         ArgumentNullException.ThrowIfNull(asset);
         return Prefer(asset.Symbol);
     }
 
-    /// <summary>Declares a preference for an asset symbol.</summary>
+    /// <summary>
+    /// Declares a preference for an asset symbol, ranked after previously declared ones: the first
+    /// declared preference wins.
+    /// </summary>
     public X402ClientOptions Prefer(string symbol)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(symbol);
@@ -51,9 +75,9 @@ public sealed class X402ClientOptions
     /// and contract address — never by symbol alone, since two catalogued assets can share one.
     /// </summary>
     /// <param name="asset">
-    /// The asset to limit. A paying handler resolves this from a server's offered <c>accepts</c>
-    /// entry, which carries network and contract address, typically through
-    /// <see cref="KnownAssets"/>.
+    /// The asset to limit. <see cref="X402PaymentHandler"/> only pays assets in
+    /// <see cref="KnownAssets"/> — it never signs against an EIP-712 domain it has not catalogued —
+    /// so a limit for any other asset is never used.
     /// </param>
     /// <param name="perRequest">Most this agent will pay for a single request.</param>
     /// <param name="perSession">Most this agent will pay in total, for this asset.</param>
@@ -78,8 +102,7 @@ public sealed class X402ClientOptions
     /// <param name="perSession">Most this agent will pay in total, for this asset.</param>
     /// <exception cref="ArgumentException">
     /// No <see cref="KnownAssets"/> entry matches <paramref name="network"/> and
-    /// <paramref name="symbol"/>. Use the <see cref="SetLimits(AssetDescriptor, decimal, decimal)"/>
-    /// overload to set a limit for an asset outside the catalogue.
+    /// <paramref name="symbol"/>. <see cref="X402PaymentHandler"/> only pays catalogued assets.
     /// </exception>
     public X402ClientOptions SetLimits(string network, string symbol, decimal perRequest, decimal perSession)
     {
@@ -89,8 +112,8 @@ public sealed class X402ClientOptions
         if (!KnownAssets.TryGet(network, symbol, out var asset))
         {
             throw new ArgumentException(
-                $"No catalogued asset matches '{symbol}' on '{network}'. Use the " +
-                "SetLimits(AssetDescriptor, decimal, decimal) overload for an asset outside KnownAssets.",
+                $"No catalogued asset matches '{symbol}' on '{network}'. X402PaymentHandler only " +
+                "pays assets listed in KnownAssets.",
                 nameof(symbol));
         }
 

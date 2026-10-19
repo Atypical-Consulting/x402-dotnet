@@ -1,11 +1,17 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using X402.AspNetCore.Configuration;
+using X402.AspNetCore.DependencyInjection;
 using X402.AspNetCore.Idempotency;
+using X402.Networks;
 using X402.Protocol;
 
 namespace X402.AspNetCore.Tests;
 
 public sealed class SettlementLedgerTests
 {
+    private const string Resource = "https://api.test/premium";
+
     private static PaymentIdentity Identity(string nonce = "0xabc") =>
         new("eip155:84532", "0x808456652fdb597867f38412077A9182bf77359F", nonce);
 
@@ -32,12 +38,24 @@ public sealed class SettlementLedgerTests
     {
         var ledger = new InMemorySettlementLedger();
         await ledger.AcquireAsync(Identity(), TestContext.Current.CancellationToken);
-        await ledger.CompleteAsync(Identity(), Settled(), TestContext.Current.CancellationToken);
+        await ledger.CompleteAsync(Identity(), Settled(), Resource, TestContext.Current.CancellationToken);
 
         var slot = await ledger.AcquireAsync(Identity(), TestContext.Current.CancellationToken);
 
         slot.State.ShouldBe(SettlementSlotState.AlreadySettled);
         slot.Existing!.Transaction.ShouldBe("0xdeadbeef");
+    }
+
+    [Fact]
+    public async Task A_settled_nonce_reports_the_resource_it_paid_for()
+    {
+        var ledger = new InMemorySettlementLedger();
+        await ledger.AcquireAsync(Identity(), TestContext.Current.CancellationToken);
+        await ledger.CompleteAsync(Identity(), Settled(), Resource, TestContext.Current.CancellationToken);
+
+        var slot = await ledger.AcquireAsync(Identity(), TestContext.Current.CancellationToken);
+
+        slot.Resource.ShouldBe(Resource);
     }
 
     [Fact]
@@ -113,16 +131,17 @@ public sealed class SettlementLedgerTests
     }
 
     [Fact]
-    public async Task An_entry_expires_once_its_authorization_can_no_longer_be_valid()
+    public async Task A_completed_entry_is_forgotten_after_its_retention()
     {
-        var ledger = new InMemorySettlementLedger(TimeSpan.FromMilliseconds(50));
+        // Retention is fixed per ledger; AddX402 sizes it to cover MaxTimeoutSeconds (see
+        // OptionsValidationTests), after which the authorization is refused on-chain anyway.
+        var time = new ManualTimeProvider(DateTimeOffset.UtcNow);
+        var ledger = new InMemorySettlementLedger(TimeSpan.FromMinutes(1), timeProvider: time);
         await ledger.AcquireAsync(Identity(), TestContext.Current.CancellationToken);
-        await ledger.CompleteAsync(Identity(), Settled(), TestContext.Current.CancellationToken);
+        await ledger.CompleteAsync(Identity(), Settled(), Resource, TestContext.Current.CancellationToken);
 
-        await Task.Delay(150, TestContext.Current.CancellationToken);
+        time.Advance(TimeSpan.FromMinutes(2));
 
-        // Past validBefore, the authorization is refused on-chain: keeping the entry would no
-        // longer protect anything and would grow memory without bound.
         var slot = await ledger.AcquireAsync(Identity(), TestContext.Current.CancellationToken);
         slot.State.ShouldBe(SettlementSlotState.Acquired);
     }
@@ -136,7 +155,7 @@ public sealed class SettlementLedgerTests
         // not wipe it out — otherwise the next presentation of the authorization would settle again.
         var ledger = new InMemorySettlementLedger();
         await ledger.AcquireAsync(Identity(), TestContext.Current.CancellationToken);
-        await ledger.CompleteAsync(Identity(), Settled(), TestContext.Current.CancellationToken);
+        await ledger.CompleteAsync(Identity(), Settled(), Resource, TestContext.Current.CancellationToken);
 
         await ledger.AbandonAsync(Identity(), TestContext.Current.CancellationToken);
 
@@ -180,7 +199,7 @@ public sealed class SettlementLedgerTests
 
         // Our own settlement finishes anyway; it must be recorded, not discarded, and the missing
         // lease must not be treated as a caller bug.
-        await ledger.CompleteAsync(Identity(), Settled(), TestContext.Current.CancellationToken);
+        await ledger.CompleteAsync(Identity(), Settled(), Resource, TestContext.Current.CancellationToken);
 
         var slot = await ledger.AcquireAsync(Identity(), TestContext.Current.CancellationToken);
         slot.State.ShouldBe(SettlementSlotState.AlreadySettled);
@@ -193,11 +212,11 @@ public sealed class SettlementLedgerTests
     {
         var ledger = new InMemorySettlementLedger();
         await ledger.AcquireAsync(Identity(), TestContext.Current.CancellationToken);
-        await ledger.CompleteAsync(Identity(), Settled(), TestContext.Current.CancellationToken);
+        await ledger.CompleteAsync(Identity(), Settled(), Resource, TestContext.Current.CancellationToken);
 
         // A retried settle that reaches the facilitator a second time and gets the identical
         // response back must not be treated as a conflict.
-        await ledger.CompleteAsync(Identity(), Settled(), TestContext.Current.CancellationToken);
+        await ledger.CompleteAsync(Identity(), Settled(), Resource, TestContext.Current.CancellationToken);
 
         var slot = await ledger.AcquireAsync(Identity(), TestContext.Current.CancellationToken);
         slot.State.ShouldBe(SettlementSlotState.AlreadySettled);
@@ -210,15 +229,42 @@ public sealed class SettlementLedgerTests
         var logger = new RecordingLogger();
         var ledger = new InMemorySettlementLedger(logger: logger);
         await ledger.AcquireAsync(Identity(), TestContext.Current.CancellationToken);
-        await ledger.CompleteAsync(Identity(), Settled(), TestContext.Current.CancellationToken);
+        await ledger.CompleteAsync(Identity(), Settled(), Resource, TestContext.Current.CancellationToken);
 
         var conflicting = Settled() with { Transaction = "0xconflict" };
-        await ledger.CompleteAsync(Identity(), conflicting, TestContext.Current.CancellationToken);
+        await ledger.CompleteAsync(Identity(), conflicting, Resource, TestContext.Current.CancellationToken);
 
         var slot = await ledger.AcquireAsync(Identity(), TestContext.Current.CancellationToken);
         slot.State.ShouldBe(SettlementSlotState.AlreadySettled);
         slot.Existing!.Transaction.ShouldBe("0xdeadbeef");
         logger.Levels.ShouldContain(LogLevel.Warning);
+    }
+
+    [Fact]
+    public async Task The_registered_ledger_remembers_a_settlement_while_its_authorization_can_still_be_presented()
+    {
+        // An authorization stays valid for up to MaxTimeoutSeconds; forgetting its settlement
+        // sooner would run the endpoint, and settle, a second time when it is presented again.
+        var time = new ManualTimeProvider(DateTimeOffset.UtcNow);
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<TimeProvider>(time);
+        services.AddX402(options =>
+        {
+            options.PayTo = "0x209693Bc6afc0C5328bA36FaF03C514EF312287C";
+            options.Network = KnownNetworks.BaseSepolia;
+            options.FacilitatorUrl = new Uri("https://x402.example/");
+            options.Assets.Add(new AssetConfiguration { Symbol = "EURC" });
+            options.MaxTimeoutSeconds = 3600;
+        });
+        var ledger = services.BuildServiceProvider().GetRequiredService<ISettlementLedger>();
+        await ledger.AcquireAsync(Identity(), TestContext.Current.CancellationToken);
+        await ledger.CompleteAsync(Identity(), Settled(), Resource, TestContext.Current.CancellationToken);
+
+        time.Advance(TimeSpan.FromMinutes(30));
+
+        var slot = await ledger.AcquireAsync(Identity(), TestContext.Current.CancellationToken);
+        slot.State.ShouldBe(SettlementSlotState.AlreadySettled);
     }
 
     private sealed class ManualTimeProvider(DateTimeOffset start) : TimeProvider

@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Http;
+using X402.AspNetCore.Configuration;
 using X402.AspNetCore.Engine;
 using X402.AspNetCore.Middleware;
 using X402.Pricing;
@@ -12,7 +13,8 @@ namespace X402.AspNetCore.Gate;
 /// see <see cref="X402PaymentProcessor.OpenBuffering"/>.
 /// </summary>
 internal sealed class X402PaymentGate(
-    IHttpContextAccessor accessor, X402PaymentProcessor processor) : IX402PaymentGate
+    IHttpContextAccessor accessor, X402PaymentProcessor processor, IResolvedAssets assets)
+    : IX402PaymentGate
 {
     /// <inheritdoc />
     public async ValueTask<PaymentGateResult> RequireAsync(
@@ -28,6 +30,17 @@ internal sealed class X402PaymentGate(
                 "IX402PaymentGate requires UseX402() in the pipeline. Without it settlement " +
                 "would never run and paid content would be delivered for free. Add " +
                 "app.UseX402(); before the endpoints.");
+
+        // Pricing a request twice would nest a second buffer inside the first: the first payment
+        // settles while the response written for the second never reaches the client.
+        if (feature.Attempt is not null || feature.Refusal is not null)
+        {
+            throw new InvalidOperationException(
+                "This request is already priced, by a UseX402 route or an earlier RequireAsync " +
+                "call. A request is priced once.");
+        }
+
+        assets.EnsureAccepted(prices, "IX402PaymentGate.RequireAsync");
 
         if (context.Response.HasStarted)
         {

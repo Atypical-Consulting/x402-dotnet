@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.Options;
 using X402.Assets;
+using X402.Pricing;
 
 namespace X402.AspNetCore.Configuration;
 
@@ -12,6 +13,31 @@ public interface IResolvedAssets
 
     /// <summary>Finds an accepted asset by contract address, ignoring case.</summary>
     bool TryGetByAddress(string? address, [NotNullWhen(true)] out AssetDescriptor? asset);
+}
+
+internal static class ResolvedAssetsExtensions
+{
+    /// <summary>
+    /// Throws when <paramref name="prices"/> names an asset this server does not accept: such a
+    /// price would be advertised, then every correctly signed payment for it refused.
+    /// </summary>
+    /// <param name="assets">The accepted assets.</param>
+    /// <param name="prices">The prices to check.</param>
+    /// <param name="pricedBy">What carries the prices, for the message — e.g. <c>Route '/x'</c>.</param>
+    public static void EnsureAccepted(this IResolvedAssets assets, PriceSet prices, string pricedBy)
+    {
+        foreach (var price in prices)
+        {
+            if (!assets.TryGetByAddress(price.Asset.Address, out _))
+            {
+                throw new InvalidOperationException(
+                    $"{pricedBy} is priced in {price.Asset.Symbol} ({price.Asset.Address}) on " +
+                    $"{price.Asset.Network}, which this server does not accept. Add it to " +
+                    "X402:Assets, or price it in an accepted asset: " +
+                    $"{string.Join(", ", assets.All.Select(a => a.Symbol))}.");
+            }
+        }
+    }
 }
 
 internal sealed class ResolvedAssets : IResolvedAssets
