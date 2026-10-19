@@ -62,7 +62,18 @@ internal static class Probe
             : $"Probing {facilitatorUrl} on {network}");
         Console.WriteLine();
 
-        var supported = await facilitator.GetSupportedAsync();
+        SupportedResponse supported;
+        try
+        {
+            supported = await facilitator.GetSupportedAsync();
+        }
+        catch (Exception exception) when (exception is FacilitatorException or HttpRequestException)
+        {
+            Console.WriteLine($"/supported could not be read: {exception.Message}");
+            Environment.ExitCode = 1;
+            return;
+        }
+
         Console.WriteLine("/supported advertises (scheme × network pairs only — never assets):");
         foreach (var kind in supported.Kinds)
         {
