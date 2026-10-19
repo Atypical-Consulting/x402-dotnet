@@ -1,0 +1,37 @@
+{
+  "$schema": "https://raw.githubusercontent.com/dotnet/docfx/main/schemas/docfx.schema.json",
+  "metadata": [
+    {
+      "src": [
+        {
+          "src": "../../src",
+          "files": [
+            "X402.Core/X402.Core.csproj",
+            "X402.AspNetCore/X402.AspNetCore.csproj",
+            "X402.Client/X402.Client.csproj"
+          ]
+        }
+      ],
+      "dest": "api",
+      "outputFormat": "mref",
+      "properties": { "Configuration": "Release" }
+    }
+  ],
+  "build": {
+    "content": [
+      { "files": ["index.md", "guides/*.md", "api/index.md", "api/*.yml"] },
+      { "src": "../adr", "files": ["*.md"], "exclude": ["template.md"], "dest": "adr" }
+    ],
+    "template": ["default", "modern", "templates/x402"],
+    "output": "_site",
+    "globalMetadata": {
+      "_appTitle": "x402-dotnet docs",
+      "_appName": "x402-dotnet",
+      "_enableSearch": false,
+      "_disableContribution": true
+    },
+    "sitemap": {
+      "baseUrl": "https://atypical-consulting.github.io/x402-dotnet/docs/"
+    }
+  }
+}

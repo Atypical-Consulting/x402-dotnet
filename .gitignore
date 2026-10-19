@@ -20,3 +20,10 @@ appsettings.Local.json
 
 # SDD workspace (scratch, not part of the deliverable)
 .superpowers/
+
+# Documentation build output (scripts/build-site.sh, docfx)
+artifacts/
+docs/site/_site/
+docs/site/api/*.yml
+docs/site/api/.manifest
+_pages/
