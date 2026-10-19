@@ -20,3 +20,6 @@ appsettings.Local.json
 
 # SDD workspace (scratch, not part of the deliverable)
 .superpowers/
+
+# Stryker.NET mutation reports
+StrykerOutput/

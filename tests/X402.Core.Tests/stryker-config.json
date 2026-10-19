@@ -1,0 +1,9 @@
+{
+  "stryker-config": {
+    "project": "X402.Core.csproj",
+    "test-runner": "mtp",
+    "mutate": ["**/Transport/X402Codec.cs", "**/Json/X402Json.cs"],
+    "reporters": ["html", "progress", "markdown"],
+    "thresholds": { "high": 80, "low": 60, "break": 68 }
+  }
+}
