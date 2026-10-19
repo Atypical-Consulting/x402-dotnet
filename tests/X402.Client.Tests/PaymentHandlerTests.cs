@@ -372,7 +372,7 @@ public sealed class PaymentHandlerTests
             var response = new HttpResponseMessage(HttpStatusCode.PaymentRequired);
             response.Headers.Add(
                 Transport.X402Headers.PaymentRequired,
-                Convert.ToBase64String("""{"x402Version":2,"resource":null,"accepts":null}"""u8.ToArray()));
+                Convert.ToBase64String("""{"x402Version":2,"resource":{"url":"https://api.test/x"},"accepts":null}"""u8.ToArray()));
             return response;
         });
 
