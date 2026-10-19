@@ -209,6 +209,11 @@ internal sealed class X402PaymentProcessor(
             return false;
         }
 
+        // Some facilitators answer a failed settle with "transaction": null; the spec types it as a
+        // string. Normalised once, here, so the stored entry, every replay, the header and the
+        // event all carry a string, whichever IFacilitatorClient produced the response.
+        settle = settle with { Transaction = settle.Transaction ?? "" };
+
         // CompleteAsync never throws: it persists whatever it is handed, inserting the entry if it
         // was pruned in the meantime. No defensive try/catch belongs here.
         await ledger.CompleteAsync(

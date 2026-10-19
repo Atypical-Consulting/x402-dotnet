@@ -58,7 +58,9 @@ public sealed record SettleResponse
     /// Transaction hash, or an empty string when settlement failed. Nullable because a
     /// non-conformant facilitator may send <c>null</c> on failure; its <see cref="ErrorReason"/>
     /// must still reach the payer. Always written, even as <c>null</c>: it is a required member,
-    /// and omitting it would make the re-encoded <c>PAYMENT-RESPONSE</c> undecodable.
+    /// and omitting it would make the re-encoded <c>PAYMENT-RESPONSE</c> undecodable. The
+    /// ASP.NET Core server normalises a facilitator's <c>null</c> to <c>""</c> before storing and
+    /// re-encoding it, so its <c>PAYMENT-RESPONSE</c> always carries a string.
     /// </summary>
     [JsonPropertyName("transaction")]
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
