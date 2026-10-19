@@ -3,7 +3,9 @@ using System.Net.Http.Json;
 using X402.Assets;
 using X402.Client;
 using X402.Protocol;
+using Nethereum.Signer;
 using X402.TestKit;
+using X402.Transport;
 
 namespace X402.Integration.Tests;
 
@@ -128,5 +130,17 @@ public sealed class EndToEndTests
         // the consequence is visible, which is the intended behaviour.
         await Should.ThrowAsync<PaymentRejectedException>(
             () => fixture.Agent.GetAsync("/premium", TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task A_custom_payer_key_signs_the_payment()
+    {
+        var key = "0x" + Convert.ToHexString(EthECKey.GenerateKey().GetPrivateKeyAsBytes());
+        await using var fixture = await PaidApiFixture.StartAsync(payerPrivateKey: key);
+
+        await fixture.Agent.GetAsync("/premium", TestContext.Current.CancellationToken);
+
+        X402Codec.TryDecode<PaymentPayload>(fixture.LastPaymentSignature!, out var payload, out _).ShouldBeTrue();
+        payload!.AsExactEvm().Authorization.From.ShouldBe(fixture.PayerAddress, StringCompareShould.IgnoreCase);
     }
 }

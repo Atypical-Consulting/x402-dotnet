@@ -55,13 +55,15 @@ public sealed class PaidApiFixture : IAsyncDisposable
     private readonly IHost host;
     private readonly ContentServedCounter servedContent;
     private readonly LastSignatureHolder lastSignature;
+    private readonly FakeFacilitator? facilitator;
 
     private PaidApiFixture(
-        IHost host, FakeFacilitator facilitator, HttpClient agent, HttpClient rawClient,
-        ContentServedCounter servedContent, LastSignatureHolder lastSignature)
+        IHost host, FakeFacilitator? facilitator, HttpClient agent, HttpClient rawClient,
+        ContentServedCounter servedContent, LastSignatureHolder lastSignature, string payerAddress)
     {
         this.host = host;
-        Facilitator = facilitator;
+        this.facilitator = facilitator;
+        PayerAddress = payerAddress;
         Agent = agent;
         RawClient = rawClient;
         this.servedContent = servedContent;
@@ -82,8 +84,15 @@ public sealed class PaidApiFixture : IAsyncDisposable
     /// </summary>
     public HttpClient RawClient { get; }
 
-    /// <summary>The in-process facilitator every request is verified and settled against.</summary>
-    public FakeFacilitator Facilitator { get; }
+    /// <summary>
+    /// The in-process facilitator every request is verified and settled against. Throws when
+    /// <see cref="StartAsync"/> was given its own <c>facilitatorHandler</c> instead.
+    /// </summary>
+    public FakeFacilitator Facilitator => facilitator
+        ?? throw new InvalidOperationException("This fixture was started with its own facilitator handler.");
+
+    /// <summary>The address <see cref="Agent"/> signs its authorizations with.</summary>
+    public string PayerAddress { get; }
 
     /// <summary>
     /// How many times <c>/premium</c>'s content was actually delivered to a caller — that is, the
@@ -110,11 +119,19 @@ public sealed class PaidApiFixture : IAsyncDisposable
     /// genuinely unpayable (see <c>An_agent_that_only_holds_dollars_still_pays_a_euro_first_server</c>).
     /// </param>
     /// <param name="configureServer">Further overrides applied after the server's defaults.</param>
+    /// <param name="facilitatorHandler">
+    /// When supplied, both facilitator clients send to the handler it returns instead of a
+    /// <see cref="FakeFacilitator"/>, and <see cref="Facilitator"/> is unavailable.
+    /// </param>
+    /// <param name="payerPrivateKey">The agent's signing key; <see cref="TestData.PayerPrivateKey"/> when omitted.</param>
     public static Task<PaidApiFixture> StartAsync(
         Action<X402ClientOptions>? configureAgent = null,
-        Action<X402Options>? configureServer = null)
+        Action<X402Options>? configureServer = null,
+        Func<HttpMessageHandler>? facilitatorHandler = null,
+        string? payerPrivateKey = null)
     {
-        var facilitator = new FakeFacilitator();
+        var facilitator = facilitatorHandler is null ? new FakeFacilitator() : null;
+        var createFacilitatorHandler = facilitatorHandler ?? facilitator!.CreateHandler;
         var servedContent = new ContentServedCounter();
 
         var premiumPrices = new PriceSet([
@@ -144,9 +161,9 @@ public sealed class PaidApiFixture : IAsyncDisposable
                     // Route the two named facilitator clients AddX402 already configured at the
                     // fake facilitator in-process — the same pattern PaidServerFixture uses.
                     services.AddHttpClient("x402-verify")
-                        .ConfigurePrimaryHttpMessageHandler(() => facilitator.CreateHandler());
+                        .ConfigurePrimaryHttpMessageHandler(createFacilitatorHandler);
                     services.AddHttpClient("x402-settle")
-                        .ConfigurePrimaryHttpMessageHandler(() => facilitator.CreateHandler());
+                        .ConfigurePrimaryHttpMessageHandler(createFacilitatorHandler);
                 })
                 .Configure(app =>
                 {
@@ -195,7 +212,7 @@ public sealed class PaidApiFixture : IAsyncDisposable
             configureAgent(agentOptions);
         }
 
-        var signer = new PrivateKeyPaymentSigner(TestData.PayerPrivateKey);
+        var signer = new PrivateKeyPaymentSigner(payerPrivateKey ?? TestData.PayerPrivateKey);
         var spendTracker = new InMemorySpendTracker(agentOptions);
         var lastSignature = new LastSignatureHolder();
 
@@ -216,7 +233,7 @@ public sealed class PaidApiFixture : IAsyncDisposable
         var agent = new HttpClient(paymentHandler) { BaseAddress = testServer.BaseAddress };
 
         return Task.FromResult(new PaidApiFixture(
-            host, facilitator, agent, rawClient, servedContent, lastSignature));
+            host, facilitator, agent, rawClient, servedContent, lastSignature, signer.Address));
     }
 
     /// <inheritdoc />
@@ -226,7 +243,10 @@ public sealed class PaidApiFixture : IAsyncDisposable
         RawClient.Dispose();
         await host.StopAsync();
         host.Dispose();
-        await Facilitator.DisposeAsync();
+        if (facilitator is not null)
+        {
+            await facilitator.DisposeAsync();
+        }
     }
 
     /// <summary>
