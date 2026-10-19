@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.1](https://github.com/Atypical-Consulting/x402-dotnet/compare/v0.1.0...v0.1.1) (2026-10-19)
+
+
+### Bug Fixes
+
+* add FsCheck property and header-fuzz suite, keep a null settlement transaction decodable ([#26](https://github.com/Atypical-Consulting/x402-dotnet/issues/26)) ([#29](https://github.com/Atypical-Consulting/x402-dotnet/issues/29)) ([4cb7735](https://github.com/Atypical-Consulting/x402-dotnet/commit/4cb7735a1890149bfe170f93dc3d2245325c8108))
+* **site:** drop the patent-style reference numerals from the handshake figure ([#22](https://github.com/Atypical-Consulting/x402-dotnet/issues/22)) ([88ca0b4](https://github.com/Atypical-Consulting/x402-dotnet/commit/88ca0b4fc151be1349aae7b8959930482c776702))
+
+
+### Documentation
+
+* add the DocFX documentation and syntax highlighting to the site ([#31](https://github.com/Atypical-Consulting/x402-dotnet/issues/31)) ([d8a920f](https://github.com/Atypical-Consulting/x402-dotnet/commit/d8a920f4e61a1d9d0410808b716a9f8a26052b6f))
+
 ## 0.1.0 (2026-10-19)
 
 
