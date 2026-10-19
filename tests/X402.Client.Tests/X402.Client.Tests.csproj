@@ -25,6 +25,11 @@
     </PackageReference>
   </ItemGroup>
 
+  <!-- One set of valid-protocol-object generators, shared with the Core tests. -->
+  <ItemGroup>
+    <Compile Include="..\X402.Core.Tests\X402Arbitraries.cs" Link="X402Arbitraries.cs" />
+  </ItemGroup>
+
   <ItemGroup>
     <Using Include="Xunit" />
     <Using Include="Shouldly" />
