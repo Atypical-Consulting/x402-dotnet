@@ -110,6 +110,27 @@ Both boundaries are enforced by tests, not just by convention:
 3. Push + Pull Request — the title is linted for the same convention, since it becomes the
    squash-merge commit message on `main`
 
+## Releasing
+
+`dotnet pack` runs [NuGet package validation](https://learn.microsoft.com/dotnet/fundamentals/apicompat/package-validation/overview)
+on the three published packages: it compares each one against the version named by
+`PackageValidationBaselineVersion` in `Directory.Build.targets`, downloaded from nuget.org, and
+fails on a breaking API change (`CP0002` for a removed member, and so on). CI packs on every PR,
+so a break fails the PR.
+
+1. **release-please** keeps a release PR current from the Conventional Commits on `main`; merging
+   it tags `vX.Y.Z`, publishes the GitHub Release and pushes the packages to nuget.org.
+2. **After each release**, open `build: bump the package-validation baseline to X.Y.Z`: set
+   `PackageValidationBaselineVersion` to the version just published and delete any
+   `CompatibilitySuppressions.xml` (the new baseline already contains the break). This is a manual
+   step on purpose — release-please's version marker would write the new version *before* it is on
+   nuget.org, and pack cannot restore a baseline that does not exist yet.
+3. **An intentional breaking change** is recorded, not hidden: run
+   `dotnet pack --configuration Release -p:ApiCompatGenerateSuppressionFile=true` once, and commit
+   the `CompatibilitySuppressions.xml` it writes next to the affected `.csproj` in the same PR — its
+   presence is what tells a reviewer the break is on purpose. Mark the commit `feat!:` / `fix!:`
+   or add a `BREAKING CHANGE:` footer so release-please bumps the version accordingly.
+
 ## Security
 
 Please don't open a public issue for a security vulnerability — see [`SECURITY.md`](SECURITY.md).

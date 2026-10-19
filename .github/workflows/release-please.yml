@@ -63,7 +63,8 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: write # attach the .nupkg files to the release created above
-      id-token: write # request the GitHub OIDC token for NuGet Trusted Publishing
+      id-token: write # request the GitHub OIDC token for NuGet Trusted Publishing (and Sigstore)
+      attestations: write # record build provenance for the .nupkg files
     steps:
       - uses: actions/checkout@v7
         with:
@@ -85,6 +86,13 @@ jobs:
 
       - name: Pack
         run: dotnet pack --no-build --configuration Release --output ./nupkg
+
+      # Before NuGet login, so the ~1h key isn't spent waiting on Sigstore. Verifiable with
+      # `gh attestation verify` against the GitHub Release asset — see README "Verifying a package".
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: ./nupkg/*.nupkg
 
       # Keep login adjacent to the push so the ~1h key doesn't expire before it's used.
       - name: NuGet login (OIDC -> short-lived key)
