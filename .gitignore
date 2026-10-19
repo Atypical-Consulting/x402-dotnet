@@ -34,3 +34,7 @@ docs/site/_site/
 docs/site/api/*.yml
 docs/site/api/.manifest
 _pages/
+
+# Claude Code local state
+.claude/worktrees/
+.claude/decision-events.jsonl
