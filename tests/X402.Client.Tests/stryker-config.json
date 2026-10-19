@@ -1,0 +1,9 @@
+{
+  "stryker-config": {
+    "project": "X402.Client.csproj",
+    "test-runner": "mtp",
+    "mutate": ["**/X402PaymentHandler.cs"],
+    "reporters": ["html", "progress", "markdown"],
+    "thresholds": { "high": 80, "low": 60, "break": 72 }
+  }
+}
