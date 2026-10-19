@@ -78,6 +78,7 @@ internal sealed partial class X402Middleware(
             // defensively by OpenRefusalBuffering (feature.Refusal set instead; see the hazard
             // documented on IX402PaymentGate.RequireAsync).
             var buffering = feature.Buffer!;
+            // Stryker disable once Statement : redundant today, BufferingResponseBodyFeature.CheckCapacityAsync discards the buffer as it poisons it, before this exception is thrown
             buffering.Discard();
             RestoreOriginalBody(context, feature);
             // Not Headers.Clear(): this is the propagating twin of FinishAsync's Poisoned branch
@@ -124,14 +125,14 @@ internal sealed partial class X402Middleware(
                     logger, exception, identity.Network, identity.Asset, identity.Nonce);
             }
 
-            // Discard() and restoring the original response body feature both guarantee nothing was
-            // delivered; buffering also guarantees the response never started. Rethrowing is
+            // Discard() and restoring the original response body feature (the finally below, which
+            // runs before this async method's task faults) both guarantee nothing was delivered; buffering also guarantees the response never started. Rethrowing is
             // therefore safe, and necessary: swallowing the exception here — as this handler used
             // to — hides it from UseExceptionHandler, the developer exception page, and any logging
             // middleware the host configured, leaving an operator debugging their own endpoint with
             // a bare 500 and no stack trace anywhere in the process.
+            // Stryker disable once Statement : the exception is rethrown and nothing flushes this buffer afterwards; Discard only frees it early
             buffering.Discard();
-            RestoreOriginalBody(context, feature);
             throw;
         }
         finally

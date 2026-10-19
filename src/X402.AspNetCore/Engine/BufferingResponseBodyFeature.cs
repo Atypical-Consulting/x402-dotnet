@@ -73,6 +73,7 @@ internal sealed class BufferingResponseBodyFeature : IHttpResponseBodyFeature
                 throw new BufferingSettlementFailedException();
             }
 
+            // Stryker disable once Boolean : CapacityCheckingStream does not override Dispose, so a PipeWriter that closes it on Complete touches no state either way
             return Overflowed
                 ? inner.Writer
                 : writer ??= PipeWriter.Create(CapacityChecked(), new StreamPipeWriterOptions(leaveOpen: true));

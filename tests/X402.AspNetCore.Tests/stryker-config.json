@@ -2,8 +2,12 @@
   "stryker-config": {
     "project": "X402.AspNetCore.csproj",
     "test-runner": "mtp",
-    "mutate": ["**/Engine/X402PaymentProcessor.cs"],
+    "mutate": [
+      "**/Engine/X402PaymentProcessor.cs",
+      "**/Engine/BufferingResponseBodyFeature.cs",
+      "**/Middleware/X402Middleware.cs"
+    ],
     "reporters": ["html", "progress", "markdown"],
-    "thresholds": { "high": 100, "low": 96, "break": 96 }
+    "thresholds": { "high": 100, "low": 98, "break": 98 }
   }
 }
