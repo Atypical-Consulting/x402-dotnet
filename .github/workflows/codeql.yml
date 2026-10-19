@@ -1,0 +1,62 @@
+name: CodeQL
+
+# Static analysis of two things: the C# in src/, tests/ and samples/ (`csharp`, built manually with
+# the SDK pinned in global.json — CodeQL's autobuild can't be relied on to pick .NET 10), and the
+# workflows themselves (`actions`: script injection, over-broad permissions, untrusted checkouts).
+# Results land under Security → Code scanning.
+#
+# Code-scanning *default setup* must stay off for this repository: when it is enabled, GitHub
+# rejects the uploads from an advanced-setup workflow like this one.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '27 4 * * 1' # weekly, Monday 04:27 UTC — new queries find old code too
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+      security-events: write # upload the SARIF results
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: csharp
+            build-mode: manual
+          - language: actions
+            build-mode: none
+    steps:
+      - uses: actions/checkout@v7
+
+      # Toolchain setup comes before init, as CodeQL's own template requires.
+      - name: Setup .NET
+        if: matrix.language == 'csharp'
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+
+      - name: Build
+        if: matrix.language == 'csharp'
+        run: dotnet build --configuration Release
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:${{ matrix.language }}

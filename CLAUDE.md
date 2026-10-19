@@ -116,3 +116,8 @@ which also packs and pushes the three packages to NuGet.org in that same workflo
 GITHUB_TOKEN-pushed tag does not itself retrigger `ci.yml`'s tag-triggered `publish`/`release`
 jobs; those exist for a manually pushed tag instead — see the comment at the top of
 `release-please.yml`).
+
+After each release, bump `PackageValidationBaselineVersion` in `Directory.Build.targets` to the
+version just published (a `build:` PR, deleting any `CompatibilitySuppressions.xml`): `dotnet pack`
+validates the API against that baseline on nuget.org and fails on an unrecorded breaking change —
+see CONTRIBUTING.md "Releasing".
