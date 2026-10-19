@@ -1,5 +1,8 @@
 using System.Net.Http.Json;
+using System.Numerics;
+using System.Security.Cryptography;
 using X402.Assets;
+using X402.Client.Signing;
 using X402.Json;
 using X402.Protocol;
 using X402.TestKit;
@@ -139,6 +142,58 @@ public sealed class FakeFacilitatorTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Verify_accepts_a_validBefore_of_two_to_the_256_minus_one()
+    {
+        // uint256 max is a common "never expires" bound; it must not overflow a long.
+        var request = await SignedWithWindowAsync(
+            validAfter: "0", validBefore: (BigInteger.Pow(2, 256) - 1).ToString());
+
+        var verify = await VerifyAsync(request);
+
+        verify.IsValid.ShouldBeTrue(verify.InvalidReason);
+    }
+
+    [Fact]
+    public async Task Settle_succeeds_with_a_validBefore_of_two_to_the_256_minus_one()
+    {
+        var request = await SignedWithWindowAsync(
+            validAfter: "0", validBefore: (BigInteger.Pow(2, 256) - 1).ToString());
+
+        var response = await client.PostAsJsonAsync("/settle", request, X402Json.Options, TestContext.Current.CancellationToken);
+        var settle = await response.Content.ReadFromJsonAsync<SettleResponse>(X402Json.Options, TestContext.Current.CancellationToken);
+
+        settle!.Success.ShouldBeTrue(settle.ErrorReason);
+    }
+
+    [Fact]
+    public async Task Verify_refuses_a_validAfter_above_long_max_with_the_validAfter_reason()
+    {
+        var request = await SignedWithWindowAsync(
+            validAfter: ((BigInteger)long.MaxValue + 1).ToString(),
+            validBefore: (BigInteger.Pow(2, 256) - 1).ToString());
+
+        var verify = await VerifyAsync(request);
+
+        verify.InvalidReason.ShouldBe(X402ErrorReason.InvalidExactEvmPayloadAuthorizationValidAfter);
+    }
+
+    [Fact]
+    public async Task Verify_refuses_a_non_integer_validBefore_as_an_invalid_payload()
+    {
+        var request = await TestData.SignedRequestAsync(TestData.EurcSepoliaRequirements());
+        var exact = request.PaymentPayload.AsExactEvm();
+        var altered = request with
+        {
+            PaymentPayload = request.PaymentPayload.WithExactEvm(
+                exact with { Authorization = exact.Authorization with { ValidBefore = "soon" } }),
+        };
+
+        var verify = await VerifyAsync(altered);
+
+        verify.InvalidReason.ShouldBe(X402ErrorReason.InvalidPayload);
+    }
+
+    [Fact]
     public async Task Settle_returns_a_transaction_hash_and_records_the_nonce()
     {
         var request = await TestData.SignedRequestAsync(TestData.EurcSepoliaRequirements());
@@ -206,5 +261,40 @@ public sealed class FakeFacilitatorTests : IAsyncLifetime
         settle!.Success.ShouldBeFalse();
         settle.Transaction.ShouldBe("");
         settle.ErrorReason.ShouldBe(X402ErrorReason.InvalidTransactionState);
+    }
+
+    private async Task<VerifyResponse> VerifyAsync(FacilitatorRequest request)
+    {
+        var response = await client.PostAsJsonAsync("/verify", request, X402Json.Options, TestContext.Current.CancellationToken);
+        var verify = await response.Content.ReadFromJsonAsync<VerifyResponse>(X402Json.Options, TestContext.Current.CancellationToken);
+        return verify.ShouldNotBeNull();
+    }
+
+    // TestData takes DateTimeOffset bounds, which cannot express a uint256 above long.MaxValue.
+    private static async Task<FacilitatorRequest> SignedWithWindowAsync(string validAfter, string validBefore)
+    {
+        var requirements = TestData.EurcSepoliaRequirements();
+        var authorization = new Eip3009Authorization
+        {
+            From = TestData.PayerAddress,
+            To = requirements.PayTo,
+            Value = requirements.Amount,
+            ValidAfter = validAfter,
+            ValidBefore = validBefore,
+            Nonce = "0x" + Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant(),
+        };
+        var exact = await new PrivateKeyPaymentSigner(TestData.PayerPrivateKey)
+            .SignAsync(requirements, authorization, KnownAssets.EurcBaseSepolia);
+
+        return new FacilitatorRequest
+        {
+            PaymentPayload = new PaymentPayload
+            {
+                Resource = new ResourceInfo { Url = "https://api.example.com/premium" },
+                Accepted = requirements,
+                Payload = System.Text.Json.JsonSerializer.SerializeToElement(exact, X402Json.Options),
+            },
+            PaymentRequirements = requirements,
+        };
     }
 }
