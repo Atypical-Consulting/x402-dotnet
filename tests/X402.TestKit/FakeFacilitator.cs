@@ -1,4 +1,6 @@
 using System.Collections.Concurrent;
+using System.Globalization;
+using System.Numerics;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
@@ -317,13 +319,17 @@ public sealed class FakeFacilitator : IAsyncDisposable
         }
 
         // 2. Validity window.
-        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        if (long.Parse(authorization.ValidAfter) > now)
+        // Both bounds are uint256 on the wire: 2^256-1 ("never expires") must not overflow a long.
+        // Eip3009TypedData.Build above already refused a non-integer bound as InvalidPayload.
+        var validAfter = BigInteger.Parse(authorization.ValidAfter, NumberStyles.None, CultureInfo.InvariantCulture);
+        var validBefore = BigInteger.Parse(authorization.ValidBefore, NumberStyles.None, CultureInfo.InvariantCulture);
+        var now = new BigInteger(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        if (validAfter > now)
         {
             return X402ErrorReason.InvalidExactEvmPayloadAuthorizationValidAfter;
         }
 
-        if (long.Parse(authorization.ValidBefore) < now)
+        if (validBefore < now)
         {
             return X402ErrorReason.InvalidExactEvmPayloadAuthorizationValidBefore;
         }
