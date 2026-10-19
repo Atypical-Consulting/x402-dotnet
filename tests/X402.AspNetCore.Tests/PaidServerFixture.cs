@@ -220,6 +220,8 @@ public sealed class PaidServerFixture : IAsyncDisposable
                                 .Map("/large-with-content-length", premiumPrices)
                                 .Map("/large-swallowing-with-content-length", premiumPrices)
                                 .Map("/not-found", premiumPrices)
+                                .Map("/large-error", premiumPrices)
+                                .Map("/slow", premiumPrices)
                                 .Map("/file", premiumPrices)
                                 .Map("/cached-body", premiumPrices)
                                 .Map("/unflushed-writer", premiumPrices)
@@ -242,6 +244,8 @@ public sealed class PaidServerFixture : IAsyncDisposable
                             "/large-swallowing-with-content-length",
                             WriteLargeBodyWithDeclaredContentLengthSwallowingExceptionsAsync);
                         endpoints.MapGet("/not-found", () => Results.NotFound());
+                        endpoints.MapGet("/large-error", WriteLargeErrorBodyAsync);
+                        endpoints.MapGet("/slow", WaitForTheClientToLeaveAsync);
                         endpoints.MapGet("/file", () => Results.File(PaidFilePath.Value, "text/plain"));
                         endpoints.MapGet("/cached-body", WriteLargeBodyThroughCachedStreamAsync);
                         endpoints.MapGet("/unflushed-writer", WriteLargeBodyWithoutFlushingAsync);
@@ -487,6 +491,28 @@ public sealed class PaidServerFixture : IAsyncDisposable
             {
                 return;
             }
+        }
+    }
+
+    /// <summary>Sets 500 and writes 64 KiB, so an error response crosses the buffer cap.</summary>
+    private static async Task WriteLargeErrorBodyAsync(HttpContext context)
+    {
+        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+        await WriteLargeBodyAsync(context);
+    }
+
+    /// <summary>
+    /// Waits until the client disconnects, then returns 200 normally with an empty body — a slow
+    /// endpoint finishing after its caller timed out.
+    /// </summary>
+    private static async Task WaitForTheClientToLeaveAsync(HttpContext context)
+    {
+        try
+        {
+            await Task.Delay(Timeout.Infinite, context.RequestAborted);
+        }
+        catch (OperationCanceledException)
+        {
         }
     }
 

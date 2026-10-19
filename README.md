@@ -313,10 +313,15 @@ its own edges:
 - **An authorization presented again re-delivers its resource, and only that resource.** Within
   the ledger's retention (at least ten minutes, and never less than `MaxTimeoutSeconds`), the same
   `PAYMENT-SIGNATURE` sent again to the resource it paid for gets the content again without a
-  second settlement — anyone who sees that header can do the same. Presented to any other
-  resource, it is refused; a settlement that failed is refused without running the endpoint. A
-  response with a status of 400 or above is never settled: the error is delivered and the
-  authorization stays usable.
+  second settlement — anyone who sees that header can do the same. "The resource" is the URL
+  including its query string; the request body is not part of it, so a replay with a different
+  body that prices the same is honoured. Presented to any other resource, it is refused; a
+  settlement that failed is refused without running the endpoint. An authorization whose
+  `validBefore` lies more than `MaxTimeoutSeconds` (plus 30 seconds of clock skew) in the future is
+  refused, so it cannot outlive the ledger's memory of it. A response with a status of 400 or
+  above is never settled, however large: the error is delivered and the authorization stays
+  usable. Nor is a response whose client has disconnected before settlement starts; a settlement
+  already under way runs to completion.
 - **The client never takes back a payment it has sent.** Once `X402PaymentHandler` has sent a
   signed authorization, its amount stays counted against the session limit even if the request
   then fails or is refused, because the server may still settle it. Only a failure before

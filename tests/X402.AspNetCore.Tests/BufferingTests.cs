@@ -36,6 +36,18 @@ public sealed class BufferingTests
     }
 
     [Fact]
+    public async Task An_error_response_beyond_the_cap_is_not_charged()
+    {
+        await using var server = await PaidServerFixture.StartAsync(
+            configure: options => options.MaxBufferedResponseBytes = 1024);
+
+        var response = await server.PayAsync("/large-error", KnownAssets.EurcBaseSepolia);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.InternalServerError);
+        server.Facilitator.SettleCallCount.ShouldBe(0);
+    }
+
+    [Fact]
     public async Task A_settlement_failing_exactly_at_the_cap_is_still_refused_before_anything_streams()
     {
         // The write that first crosses the cap is what forces settlement, and it fails before that

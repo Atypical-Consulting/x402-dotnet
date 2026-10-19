@@ -77,6 +77,17 @@ internal sealed class X402PaymentProcessor(
             return PaymentAttempt.Refused(Demand(resource, offered, X402ErrorReason.InvalidPayload));
         }
 
+        // 2c. The ledger remembers a settlement for max(10 min, MaxTimeoutSeconds): an authorization
+        //     valid for longer could be presented again once it is forgotten and run the endpoint
+        //     twice. Refuse it here (30 s of clock skew allowed) so that retention is a guarantee.
+        if (!long.TryParse(payload!.AsExactEvm().Authorization.ValidBefore, out var validBefore)
+            || validBefore > time.GetUtcNow().ToUnixTimeSeconds() + requirements.MaxTimeoutSeconds + 30)
+        {
+            await RecordAsync(PaymentEventStatus.VerificationFailed, requirements, resource, null,
+                X402ErrorReason.InvalidPayload, cancellationToken);
+            return PaymentAttempt.Refused(Demand(resource, offered, X402ErrorReason.InvalidPayload));
+        }
+
         // 3. Have OUR requirement verified.
         VerifyResponse verify;
         try
@@ -119,7 +130,7 @@ internal sealed class X402PaymentProcessor(
                 var memorised = slot.Existing!;
                 var refusal =
                     !memorised.Success ? memorised.ErrorReason ?? X402ErrorReason.UnexpectedSettleError
-                    : !string.Equals(slot.Resource, resource.Url, StringComparison.Ordinal)
+                    : !string.Equals(slot.Resource, LedgerResource(context, resource), StringComparison.Ordinal)
                         ? "this authorization already paid for a different resource"
                     : null;
                 if (refusal is not null)
@@ -199,7 +210,8 @@ internal sealed class X402PaymentProcessor(
 
         // CompleteAsync never throws: it persists whatever it is handed, inserting the entry if it
         // was pruned in the meantime. No defensive try/catch belongs here.
-        await ledger.CompleteAsync(attempt.Identity, settle, attempt.Demand!.Resource.Url, cancellationToken);
+        await ledger.CompleteAsync(
+            attempt.Identity, settle, LedgerResource(context, attempt.Demand!.Resource), cancellationToken);
         context.Response.Headers[X402Headers.PaymentResponse] = X402Codec.Encode(settle);
         if (!settle.Success)
         {
@@ -228,8 +240,18 @@ internal sealed class X402PaymentProcessor(
     {
         // Settlement never runs on the client's connection token: a disconnect mid-settle would
         // otherwise leave the authorization neither completed nor abandoned in the ledger.
-        var buffering = InstallBuffering(
-            context, feature, _ => SettleAsync(context, attempt, CancellationToken.None));
+        var buffering = InstallBuffering(context, feature, async _ =>
+        {
+            // Same rule as FinishAsync: an error response is never charged, even past the cap.
+            // True lets it stream through uncharged.
+            if (context.Response.StatusCode >= 400 && attempt.MemorisedSettlement is null)
+            {
+                await ledger.AbandonAsync(attempt.Identity, CancellationToken.None);
+                return true;
+            }
+
+            return await SettleAsync(context, attempt, CancellationToken.None);
+        });
         feature.Attempt = attempt;
         return buffering;
     }
@@ -337,6 +359,15 @@ internal sealed class X402PaymentProcessor(
             return;
         }
 
+        if (context.RequestAborted.IsCancellationRequested && attempt.MemorisedSettlement is null)
+        {
+            // The client is already gone: nothing could be delivered, so do not charge for it.
+            // Settlement that has started still runs to completion (CancellationToken.None).
+            await ledger.AbandonAsync(attempt.Identity, CancellationToken.None);
+            buffering.Discard();
+            return;
+        }
+
         var settled = await SettleAsync(context, attempt, CancellationToken.None);
         if (settled)
         {
@@ -358,6 +389,14 @@ internal sealed class X402PaymentProcessor(
         context.Response.ContentLength = null;
         await new PaymentRequiredResult(attempt.SettlementFailedDemand).ExecuteAsync(context);
     }
+
+    /// <summary>
+    /// What a settled authorization is bound to in the ledger: the resource URL plus the query
+    /// string, so a replay with other query parameters is not the same paid request. The request
+    /// body is not part of it.
+    /// </summary>
+    private static string LedgerResource(HttpContext context, ResourceInfo resource) =>
+        resource.Url + context.Request.QueryString;
 
     private ResourceInfo BuildResourceInfo(HttpContext context, ResourceInfoOverrides? overrides)
     {

@@ -290,6 +290,51 @@ public sealed class PaymentProcessorTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_settled_authorization_does_not_unlock_the_same_route_with_another_query()
+    {
+        var payload = await server.SignFor("/premium", KnownAssets.EurcBaseSepolia);
+        (await server.SendAsync("/premium?id=1", payload)).StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        var replay = await server.SendAsync("/premium?id=2", payload);
+
+        replay.StatusCode.ShouldBe(HttpStatusCode.PaymentRequired);
+    }
+
+    [Fact]
+    public async Task An_authorization_valid_beyond_MaxTimeoutSeconds_is_refused_before_verification()
+    {
+        var demand = server.DecodeDemand(
+            await server.Client.GetAsync("/premium", TestContext.Current.CancellationToken));
+        var payload = await TestData.SignedPayloadAsync(
+            demand.Accepts[0], validBefore: DateTimeOffset.UtcNow.AddDays(1));
+
+        await server.SendAsync("/premium", payload);
+
+        server.Facilitator.VerifyCallCount.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task A_client_gone_before_settlement_is_not_charged()
+    {
+        var payload = await server.SignFor("/slow", KnownAssets.EurcBaseSepolia);
+        using (var abandon = new CancellationTokenSource(TimeSpan.FromMilliseconds(300)))
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, "/slow");
+            request.Headers.TryAddWithoutValidation(X402Headers.PaymentSignature, X402Codec.Encode(payload));
+            await Should.ThrowAsync<OperationCanceledException>(
+                () => server.Client.SendAsync(request, abandon.Token));
+        }
+
+        // BufferedRequestCount moves once the whole pipeline, FinishAsync included, has returned.
+        for (var i = 0; i < 100 && server.BufferedRequestCount == 0; i++)
+        {
+            await Task.Delay(50, TestContext.Current.CancellationToken);
+        }
+
+        server.Facilitator.SettleCallCount.ShouldBe(0);
+    }
+
+    [Fact]
     public async Task A_failed_settlement_presented_again_is_refused_without_running_the_endpoint()
     {
         server.Facilitator.Scenario = FakeFacilitatorScenario.SettleFailure;
@@ -393,7 +438,7 @@ public sealed class PaymentProcessorTests : IAsyncLifetime
         var demand = slow.DecodeDemand(
             await slow.Client.GetAsync("/premium", TestContext.Current.CancellationToken));
         var payload = await TestData.SignedPayloadAsync(
-            demand.Accepts[0], validBefore: DateTimeOffset.UtcNow.AddMinutes(5));
+            demand.Accepts[0], validBefore: DateTimeOffset.UtcNow.AddSeconds(30));
 
         using (var abandon = new CancellationTokenSource(TimeSpan.FromMilliseconds(300)))
         {
