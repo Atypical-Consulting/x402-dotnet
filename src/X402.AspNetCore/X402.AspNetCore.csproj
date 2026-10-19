@@ -6,7 +6,7 @@
          and the bare id is exactly what an accidental release would have squatted. See ADR 0004. -->
     <PackageId>Atypical.X402.AspNetCore</PackageId>
     <RootNamespace>X402.AspNetCore</RootNamespace>
-    <Description>ASP.NET Core configuration and service registration for accepting x402 v2 payments: strongly-typed options, asset resolution, and start-up validation that fails the host before the first payment.</Description>
+    <Description>Accept x402 v2 payments in ASP.NET Core: route-pricing middleware, an imperative payment gate for request-dependent prices, a resilient facilitator client, an idempotency ledger that settles each authorization at most once, and start-up validation. Never holds a signing key.</Description>
   </PropertyGroup>
 
   <ItemGroup>
@@ -14,8 +14,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Not used until task 8's facilitator client, but pinned and referenced here so the project
-         shape does not change when that client is added. -->
     <PackageReference Include="Microsoft.Extensions.Http.Resilience" />
   </ItemGroup>
 
