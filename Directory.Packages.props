@@ -27,6 +27,10 @@
     <PackageVersion Include="Shouldly" Version="4.3.0" />
     <PackageVersion Include="coverlet.MTP" Version="10.1.0" />
     <PackageVersion Include="FsCheck" Version="3.5.0" />
+    <!-- X402.OnChain.Tests: an Anvil fork of Base Sepolia in Docker (Testcontainers), driven over
+         JSON-RPC (Nethereum.Web3, same 7.0.0 line as Nethereum.Signer.EIP712). -->
+    <PackageVersion Include="Nethereum.Web3" Version="7.0.0" />
+    <PackageVersion Include="Testcontainers" Version="4.16.0" />
     <PackageVersion Include="FsCheck.Xunit.v3" Version="3.5.0" />
     <PackageVersion Include="xunit.v3" Version="4.0.2" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.1" />
