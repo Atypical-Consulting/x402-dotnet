@@ -21,7 +21,7 @@ public sealed class FacilitatorClientTests : IAsyncLifetime
     // and "x402-settle" — instead of one shared policy that inspects the request URI to tell them
     // apart. Both point at the same fake facilitator here; only the resilience behavior applied by
     // HttpFacilitatorClient around each name differs.
-    private IFacilitatorClient Client()
+    private IFacilitatorClient Client(Func<HttpMessageHandler>? primary = null)
     {
         var services = new ServiceCollection();
         services.AddLogging();
@@ -33,7 +33,7 @@ public sealed class FacilitatorClientTests : IAsyncLifetime
                     client.BaseAddress = new Uri("http://localhost");
                     client.Timeout = Timeout.InfiniteTimeSpan;
                 })
-                .ConfigurePrimaryHttpMessageHandler(() => facilitator.CreateHandler());
+                .ConfigurePrimaryHttpMessageHandler(primary ?? (() => facilitator.CreateHandler()));
         }
 
         services.AddSingleton<IFacilitatorClient, HttpFacilitatorClient>();
@@ -47,6 +47,15 @@ public sealed class FacilitatorClientTests : IAsyncLifetime
         var supported = await Client().GetSupportedAsync(TestContext.Current.CancellationToken);
 
         supported.Kinds.ShouldContain(k => k.Scheme == "exact" && k.Network == "eip155:84532");
+    }
+
+    [Fact]
+    public async Task GetSupportedAsync_reports_an_unreadable_body_as_a_facilitator_exception()
+    {
+        var client = Client(() => new FixedResponseHandler("""{"kinds":null,"extensions":[],"signers":{}}"""));
+
+        await Should.ThrowAsync<FacilitatorException>(
+            () => client.GetSupportedAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -149,5 +158,15 @@ public sealed class FacilitatorClientTests : IAsyncLifetime
         var resolved = new Uri(HttpFacilitatorClient.EnsureTrailingSlash(baseAddress), "verify");
 
         resolved.ShouldBe(new Uri("https://host.example/facilitator/verify"));
+    }
+
+    private sealed class FixedResponseHandler(string json) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json"),
+            });
     }
 }

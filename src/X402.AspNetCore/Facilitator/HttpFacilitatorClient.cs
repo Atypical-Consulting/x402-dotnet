@@ -83,6 +83,12 @@ internal sealed class HttpFacilitatorClient(IHttpClientFactory httpClientFactory
                 $"The facilitator at {httpClient.BaseAddress} could not be reached for /supported.",
                 exception);
         }
+        catch (JsonException exception)
+        {
+            throw new FacilitatorException(
+                $"The facilitator returned a body for /supported that is not a valid {nameof(SupportedResponse)}.",
+                exception);
+        }
     }
 
     private async Task<TResponse> PostAsync<TResponse>(
