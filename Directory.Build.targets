@@ -13,7 +13,7 @@
     <!-- The last version published to nuget.org. Bump by hand after each release — see
          CONTRIBUTING.md "Releasing". Deliberately not driven by release-please: its marker would
          write the new, not-yet-published version, which pack cannot restore as a baseline. -->
-    <PackageValidationBaselineVersion>0.1.1</PackageValidationBaselineVersion>
+    <PackageValidationBaselineVersion>0.1.2</PackageValidationBaselineVersion>
   </PropertyGroup>
 
 </Project>
