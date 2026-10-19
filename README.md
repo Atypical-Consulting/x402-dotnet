@@ -104,8 +104,12 @@ tying it to the commit and workflow run that built it:
 
 ```bash
 gh release download vX.Y.Z --repo Atypical-Consulting/x402-dotnet --pattern '*.nupkg'
-gh attestation verify Atypical.X402.Core.X.Y.Z.nupkg --repo Atypical-Consulting/x402-dotnet
+gh attestation verify Atypical.X402.Core.X.Y.Z.nupkg --repo Atypical-Consulting/x402-dotnet \
+  --signer-workflow Atypical-Consulting/x402-dotnet/.github/workflows/release-please.yml
 ```
+
+`--signer-workflow` pins the attestation to the release workflow, not just to any workflow in the
+repository. A release from a hand-pushed tag is attested by `.github/workflows/ci.yml` instead.
 
 Verify the copy attached to the **GitHub Release**. A copy downloaded from nuget.org will not match:
 nuget.org adds its repository signature to every package it accepts, which changes the file's

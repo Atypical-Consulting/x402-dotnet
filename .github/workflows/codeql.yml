@@ -39,17 +39,18 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4
-        with:
-          languages: ${{ matrix.language }}
-          build-mode: ${{ matrix.build-mode }}
-
+      # Toolchain setup comes before init, as CodeQL's own template requires.
       - name: Setup .NET
         if: matrix.language == 'csharp'
         uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
 
       - name: Build
         if: matrix.language == 'csharp'
