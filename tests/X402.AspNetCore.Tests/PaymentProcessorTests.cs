@@ -107,6 +107,38 @@ public sealed class PaymentProcessorTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_null_settle_transaction_is_emitted_as_an_empty_string()
+    {
+        server.Facilitator.Scenario = FakeFacilitatorScenario.SettleFailure;
+        server.Facilitator.RewriteSettleTransaction = _ => null;
+
+        var response = await server.PayAsync("/premium", KnownAssets.EurcBaseSepolia);
+
+        RawSettlementTransaction(response).ShouldBe("\"\"");
+    }
+
+    [Fact]
+    public async Task A_replayed_null_settle_transaction_is_emitted_as_an_empty_string()
+    {
+        server.Facilitator.RewriteSettleTransaction = _ => null;
+        var payload = await server.SignFor("/premium", KnownAssets.EurcBaseSepolia);
+        await server.SendAsync("/premium", payload);
+
+        var replay = await server.SendAsync("/premium", payload);
+
+        RawSettlementTransaction(replay).ShouldBe("\"\"");
+    }
+
+    /// <summary>The raw JSON of the PAYMENT-RESPONSE <c>transaction</c> member, read without the
+    /// typed decode, which accepts null and would hide the wire shape.</summary>
+    private static string RawSettlementTransaction(HttpResponseMessage response)
+    {
+        var header = response.Headers.GetValues(X402Headers.PaymentResponse).Single();
+        using var json = System.Text.Json.JsonDocument.Parse(Convert.FromBase64String(header));
+        return json.RootElement.GetProperty("transaction").GetRawText();
+    }
+
+    [Fact]
     public async Task An_invalid_payment_gets_402_with_the_reason_in_the_demand()
     {
         server.Facilitator.Scenario = FakeFacilitatorScenario.InsufficientFunds;

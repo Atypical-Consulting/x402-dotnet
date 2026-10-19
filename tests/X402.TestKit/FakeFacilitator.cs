@@ -1,4 +1,6 @@
 using System.Collections.Concurrent;
+using System.Globalization;
+using System.Numerics;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
@@ -71,6 +73,14 @@ public sealed class FakeFacilitator : IAsyncDisposable
     /// settlement reported apart from the one verification reported.
     /// </summary>
     public Func<string?, string?>? RewriteSettlePayer { get; set; }
+
+    /// <summary>
+    /// When set, rewrites the transaction every <c>/settle</c> response reports (the value that
+    /// would have been reported goes in — the hash on success, <c>""</c> on failure — and the
+    /// reported value comes out; null emits JSON <c>null</c>), so a test can play a facilitator
+    /// that answers <c>"transaction": null</c>.
+    /// </summary>
+    public Func<string?, string?>? RewriteSettleTransaction { get; set; }
 
     /// <summary>Every nonce presented to <c>/settle</c>, duplicates included.</summary>
     public IReadOnlyList<string> SettledNonces => [.. settledNonces];
@@ -214,20 +224,21 @@ public sealed class FakeFacilitator : IAsyncDisposable
                 Success = false,
                 ErrorReason = reason ?? X402ErrorReason.InvalidTransactionState,
                 Payer = PayerOf(request),
-                Transaction = "",
+                Transaction = RewriteSettleTransaction is { } rewriteFailed ? rewriteFailed("") : "",
                 Network = request.PaymentRequirements.Network,
             }, X402Json.Options);
         }
 
         var payer = PayerOf(request);
+        // Deterministic hash derived from the nonce: reproducible, hence assertable.
+        var hash = "0x" + Convert.ToHexString(
+            System.Security.Cryptography.SHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes(authorization.Nonce))).ToLowerInvariant();
         return Results.Json(new SettleResponse
         {
             Success = true,
             Payer = RewriteSettlePayer is { } rewrite ? rewrite(payer) : payer,
-            // Deterministic hash derived from the nonce: reproducible, hence assertable.
-            Transaction = "0x" + Convert.ToHexString(
-                System.Security.Cryptography.SHA256.HashData(
-                    System.Text.Encoding.UTF8.GetBytes(authorization.Nonce))).ToLowerInvariant(),
+            Transaction = RewriteSettleTransaction is { } rewriteSettled ? rewriteSettled(hash) : hash,
             Network = request.PaymentRequirements.Network,
             Amount = request.PaymentRequirements.Amount,
         }, X402Json.Options);
@@ -317,13 +328,17 @@ public sealed class FakeFacilitator : IAsyncDisposable
         }
 
         // 2. Validity window.
-        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        if (long.Parse(authorization.ValidAfter) > now)
+        // Both bounds are uint256 on the wire: 2^256-1 ("never expires") must not overflow a long.
+        // Eip3009TypedData.Build above already refused a non-integer bound as InvalidPayload.
+        var validAfter = BigInteger.Parse(authorization.ValidAfter, NumberStyles.None, CultureInfo.InvariantCulture);
+        var validBefore = BigInteger.Parse(authorization.ValidBefore, NumberStyles.None, CultureInfo.InvariantCulture);
+        var now = new BigInteger(DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+        if (validAfter > now)
         {
             return X402ErrorReason.InvalidExactEvmPayloadAuthorizationValidAfter;
         }
 
-        if (long.Parse(authorization.ValidBefore) < now)
+        if (validBefore < now)
         {
             return X402ErrorReason.InvalidExactEvmPayloadAuthorizationValidBefore;
         }
