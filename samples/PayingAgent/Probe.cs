@@ -152,7 +152,7 @@ internal static class Probe
 
             var settled = await facilitator.SettleAsync(payload, requirements);
             return settled.Success
-                ? ("settled", settled.Transaction)
+                ? ("settled", settled.Transaction ?? "")
                 : ("refused", settled.ErrorReason ?? "unknown");
         }
         catch (FacilitatorException exception)

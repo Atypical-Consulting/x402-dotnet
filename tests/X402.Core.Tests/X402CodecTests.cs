@@ -144,4 +144,14 @@ public sealed class X402CodecTests
 
         X402Codec.TryDecode<PaymentPayload>(header, out _, out _).ShouldBeFalse();
     }
+
+    [Fact]
+    public void A_settle_failure_with_a_null_transaction_keeps_its_error_reason()
+    {
+        var json = """{"success":false,"errorReason":"insufficient_funds","transaction":null,"network":"eip155:84532"}""";
+
+        var settle = System.Text.Json.JsonSerializer.Deserialize<SettleResponse>(json, Json.X402Json.Options)!;
+
+        settle.ErrorReason.ShouldBe("insufficient_funds");
+    }
 }
