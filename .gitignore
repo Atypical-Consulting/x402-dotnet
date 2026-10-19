@@ -21,6 +21,13 @@ appsettings.Local.json
 # SDD workspace (scratch, not part of the deliverable)
 .superpowers/
 
+# Stryker.NET mutation reports
+StrykerOutput/
+
+# Coverage output (coverlet.MTP, ReportGenerator)
+TestResults/
+coverage/
+
 # Documentation build output (scripts/build-site.sh, docfx)
 artifacts/
 docs/site/_site/

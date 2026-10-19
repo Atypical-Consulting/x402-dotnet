@@ -40,7 +40,8 @@ namespace X402.AspNetCore.Tests;
 /// <c>/analyze-ignoring-refusal</c> (deliberately buggy: ignores a gate refusal and serves content
 /// anyway, for <c>PaymentGateTests</c>), and <c>/analyze-ignoring-refusal-overflowing</c>
 /// (ignores a gate refusal AND overflows the buffer in a swallowed broad catch, for
-/// <c>BufferingTests</c>), <c>/not-found</c> (priced, answers 404), <c>/file</c> (priced, serves a
+/// <c>BufferingTests</c>), <c>/not-found</c> (priced, answers 404), <c>/bad-request</c> (priced, answers exactly 400 with a
+/// small body), <c>/large-bad-request</c> (priced, answers 400 with 64 KiB), <c>/file</c> (priced, serves a
 /// physical file through <c>SendFileAsync</c>), <c>/cached-body</c> (priced, streams 64 KiB through
 /// one cached <c>Response.Body</c> reference), <c>/unflushed-writer</c> (priced, writes 64 KiB into
 /// <c>Response.BodyWriter</c> and never flushes) and <c>/premium-gated</c> (priced by the route
@@ -87,6 +88,15 @@ public sealed class PaidServerFixture : IAsyncDisposable
     /// <summary>Every payment event recorded so far.</summary>
     public IReadOnlyList<PaymentEvent> Events => sink.Events;
 
+    /// <summary>
+    /// Runs inside the engine's own event recording, after each event is stored — lets a test act
+    /// at that exact point in the flow (e.g. take a ledger slot as a concurrent retry would).
+    /// </summary>
+    public Func<PaymentEvent, ValueTask>? OnEvent
+    {
+        set => sink.OnEvent = value;
+    }
+
     /// <summary>Error-level log messages captured so far, formatted category-first.</summary>
     public IReadOnlyList<string> LoggedErrors => logs.Errors;
 
@@ -118,9 +128,13 @@ public sealed class PaidServerFixture : IAsyncDisposable
     /// Exercises <c>IX402PaymentGate.RequireAsync</c> failing loudly instead of delivering unpaid
     /// content.
     /// </param>
+    /// <param name="time">
+    /// The clock the engine reads, in place of <see cref="TimeProvider.System"/> — lets a test pin
+    /// "now" to hit a validity-window boundary exactly.
+    /// </param>
     public static Task<PaidServerFixture> StartAsync(
         Action<X402Options>? configure = null, bool sinkThrows = false,
-        Action<X402RouteBuilder>? routes = null, bool withMiddleware = true)
+        Action<X402RouteBuilder>? routes = null, bool withMiddleware = true, TimeProvider? time = null)
     {
         var facilitator = new FakeFacilitator();
         var sink = new RecordingPaymentEventSink(sinkThrows);
@@ -145,6 +159,11 @@ public sealed class PaidServerFixture : IAsyncDisposable
                     // Registered before AddX402: AddCore's registration of the default sink is a
                     // TryAdd, so this one wins.
                     services.AddSingleton<IPaymentEventSink>(sink);
+                    if (time is not null)
+                    {
+                        // Same TryAdd reasoning: registered first, this clock wins over TimeProvider.System.
+                        services.AddSingleton(time);
+                    }
 
                     services.AddX402(options =>
                     {
@@ -220,6 +239,8 @@ public sealed class PaidServerFixture : IAsyncDisposable
                                 .Map("/large-with-content-length", premiumPrices)
                                 .Map("/large-swallowing-with-content-length", premiumPrices)
                                 .Map("/not-found", premiumPrices)
+                                .Map("/bad-request", premiumPrices)
+                                .Map("/large-bad-request", premiumPrices)
                                 .Map("/large-error", premiumPrices)
                                 .Map("/slow", premiumPrices)
                                 .Map("/file", premiumPrices)
@@ -244,6 +265,8 @@ public sealed class PaidServerFixture : IAsyncDisposable
                             "/large-swallowing-with-content-length",
                             WriteLargeBodyWithDeclaredContentLengthSwallowingExceptionsAsync);
                         endpoints.MapGet("/not-found", () => Results.NotFound());
+                        endpoints.MapGet("/bad-request", () => Results.BadRequest("bad request body"));
+                        endpoints.MapGet("/large-bad-request", WriteLargeBadRequestBodyAsync);
                         endpoints.MapGet("/large-error", WriteLargeErrorBodyAsync);
                         endpoints.MapGet("/slow", WaitForTheClientToLeaveAsync);
                         endpoints.MapGet("/file", () => Results.File(PaidFilePath.Value, "text/plain"));
@@ -494,6 +517,13 @@ public sealed class PaidServerFixture : IAsyncDisposable
         }
     }
 
+    /// <summary>Sets exactly 400 and writes 64 KiB: the lowest error status, crossing the buffer cap.</summary>
+    private static async Task WriteLargeBadRequestBodyAsync(HttpContext context)
+    {
+        context.Response.StatusCode = StatusCodes.Status400BadRequest;
+        await WriteLargeBodyAsync(context);
+    }
+
     /// <summary>Sets 500 and writes 64 KiB, so an error response crosses the buffer cap.</summary>
     private static async Task WriteLargeErrorBodyAsync(HttpContext context)
     {
@@ -641,6 +671,8 @@ public sealed class PaidServerFixture : IAsyncDisposable
             }
         }
 
+        public Func<PaymentEvent, ValueTask>? OnEvent { get; set; }
+
         public ValueTask RecordAsync(PaymentEvent paymentEvent, CancellationToken cancellationToken = default)
         {
             if (throwOnRecord)
@@ -653,7 +685,7 @@ public sealed class PaidServerFixture : IAsyncDisposable
                 events.Add(paymentEvent);
             }
 
-            return ValueTask.CompletedTask;
+            return OnEvent?.Invoke(paymentEvent) ?? ValueTask.CompletedTask;
         }
     }
 

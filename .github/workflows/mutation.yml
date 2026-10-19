@@ -1,0 +1,92 @@
+name: Mutation
+
+# Test-strength indicators, kept off ci.yml's build/pack/publish path: Stryker.NET mutation testing
+# on the highest-risk files (gated by each stryker-config.json's thresholds.break) and a branch
+# coverage summary (reported, never gated).
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - '.config/dotnet-tools.json'
+      - 'Directory.*'
+      - 'global.json'
+      - '.github/workflows/mutation.yml'
+  schedule:
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mutation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mutation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [X402.Core.Tests, X402.AspNetCore.Tests, X402.Client.Tests]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Restore tools
+        run: dotnet tool restore
+
+      # A score below thresholds.break in the project's stryker-config.json fails this step.
+      - name: Stryker
+        working-directory: tests/${{ matrix.project }}
+        run: dotnet stryker
+
+      - name: Mutation summary
+        if: always()
+        working-directory: tests/${{ matrix.project }}
+        run: cat StrykerOutput/*/reports/mutation-report.md >> "$GITHUB_STEP_SUMMARY" || true
+
+      - name: Upload mutation report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: mutation-report-${{ matrix.project }}
+          path: tests/${{ matrix.project }}/StrykerOutput/*/reports/
+
+  coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Restore tools
+        run: dotnet tool restore
+
+      # Each test project's testconfig.json scopes coverlet.MTP to the three libraries.
+      - name: Test with coverage
+        run: dotnet test --configuration Release --coverlet --results-directory ./TestResults
+
+      # Indicator only: no step compares a percentage.
+      - name: Coverage summary
+        run: |
+          dotnet reportgenerator -reports:"TestResults/*.cobertura.*.xml" -targetdir:coverage -reporttypes:"MarkdownSummaryGithub;Html"
+          cat coverage/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report
+          path: coverage/

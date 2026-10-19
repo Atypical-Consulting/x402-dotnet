@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Text;
 using X402.Core.Tests.Vectors;
 using X402.Protocol;
@@ -121,6 +122,77 @@ public sealed class X402CodecTests
         value.ShouldBeNull();
         error.ShouldNotBeNullOrWhiteSpace();
         error.ShouldContain("exceeds");
+    }
+
+    [Fact]
+    public void TryDecode_spells_out_both_versions_in_a_mismatch()
+    {
+        var v1 = Convert.ToBase64String(Encoding.UTF8.GetBytes(
+            """{"x402Version":1,"resource":{"url":"https://x"},"accepts":[]}"""));
+
+        X402Codec.TryDecode<PaymentRequired>(v1, out _, out var error);
+
+        error.ShouldBe("unsupported x402 protocol version 1; this library implements version 2 only");
+    }
+
+    [Fact]
+    public void TryDecode_says_an_unregistered_type_is_not_a_protocol_type()
+    {
+        var b64 = Convert.ToBase64String(Encoding.UTF8.GetBytes("""{"foo":"bar"}"""));
+
+        X402Codec.TryDecode<X402.Assets.AssetDescriptor>(b64, out _, out var error);
+
+        error.ShouldStartWith("AssetDescriptor is not a registered x402 protocol type");
+    }
+
+    [Fact]
+    public void TryDecode_refuses_a_json_null()
+    {
+        var header = Convert.ToBase64String("null"u8.ToArray());
+
+        X402Codec.TryDecode<PaymentRequired>(header, out _, out _).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void TryDecode_says_a_json_null_decoded_to_null()
+    {
+        var header = Convert.ToBase64String("null"u8.ToArray());
+
+        X402Codec.TryDecode<PaymentRequired>(header, out _, out var error);
+
+        error.ShouldBe("the header decoded to a null PaymentRequired");
+    }
+
+    [Fact]
+    public void TryDecode_accepts_a_header_of_exactly_the_maximum_size()
+    {
+        // 10 MB of 'A' is valid base64 (all zero bytes), so it must get past the size check and
+        // fail later, as invalid JSON — not as an oversized header.
+        var atTheLimit = new string('A', 10 * 1024 * 1024);
+
+        X402Codec.TryDecode<PaymentRequired>(atTheLimit, out _, out var error);
+
+        error!.ShouldNotContain("exceeds");
+    }
+
+    [Fact]
+    public void TryDecode_clears_the_pooled_buffer_before_returning_it()
+    {
+        // ~700 KB decoded: a pool bucket (1 MB) nothing else in the suite rents, so a dirty array
+        // found there can only be the one TryDecode just returned.
+        var header = Convert.ToBase64String(Enumerable.Repeat((byte)'x', 700_000).ToArray());
+        var size = ((header.Length * 3) / 4) + 4;
+        // Empty this thread's cached slot for that bucket, so the buffer TryDecode returns is the
+        // one the next Rent hands back.
+        var held = ArrayPool<byte>.Shared.Rent(size);
+
+        X402Codec.TryDecode<PaymentRequired>(header, out _, out _);
+        var reused = ArrayPool<byte>.Shared.Rent(size);
+        var leaked = reused.Any(b => b != 0);
+        ArrayPool<byte>.Shared.Return(reused);
+        ArrayPool<byte>.Shared.Return(held);
+
+        leaked.ShouldBeFalse();
     }
 
     [Theory]
