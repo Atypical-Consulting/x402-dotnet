@@ -66,7 +66,7 @@ public sealed partial class InMemorySettlementLedger : ISettlementLedger
 
             if (ReferenceEquals(existing, fresh))
             {
-                return ValueTask.FromResult(new SettlementSlot(SettlementSlotState.Acquired, null));
+                return ValueTask.FromResult(new SettlementSlot(SettlementSlotState.Acquired, null, null));
             }
 
             // Pruning is throttled, so an expired entry can still be here: treat it as absent.
@@ -74,7 +74,7 @@ public sealed partial class InMemorySettlementLedger : ISettlementLedger
             {
                 if (entries.TryUpdate(identity, fresh, existing))
                 {
-                    return ValueTask.FromResult(new SettlementSlot(SettlementSlotState.Acquired, null));
+                    return ValueTask.FromResult(new SettlementSlot(SettlementSlotState.Acquired, null, null));
                 }
 
                 continue; // Lost a race; re-read and resolve against the new state.
@@ -82,7 +82,7 @@ public sealed partial class InMemorySettlementLedger : ISettlementLedger
 
             return ValueTask.FromResult(existing.Response is { } response
                 ? new SettlementSlot(SettlementSlotState.AlreadySettled, response, existing.Resource)
-                : new SettlementSlot(SettlementSlotState.InFlight, null));
+                : new SettlementSlot(SettlementSlotState.InFlight, null, null));
         }
     }
 
@@ -194,14 +194,14 @@ public sealed partial class InMemorySettlementLedger : ISettlementLedger
                   "(transaction {Transaction}) — most likely the lease timeout reclaimed it while " +
                   "settlement was still in flight.")]
     private static partial void CompletedWithoutAcquisition(
-        ILogger logger, string network, string asset, string nonce, string transaction);
+        ILogger logger, string network, string asset, string nonce, string? transaction);
 
     [LoggerMessage(EventId = 4031, Level = LogLevel.Warning,
         Message = "Settlement for {Network}/{Asset}/{Nonce} was already completed with transaction " +
                   "{ExistingTransaction}; ignoring a conflicting completion carrying transaction " +
                   "{NewTransaction}.")]
     private static partial void ConflictingCompletion(ILogger logger, string network, string asset,
-        string nonce, string existingTransaction, string newTransaction);
+        string nonce, string? existingTransaction, string? newTransaction);
 
     private sealed record Entry(DateTimeOffset ExpiresAt, SettleResponse? Response, string? Resource);
 }

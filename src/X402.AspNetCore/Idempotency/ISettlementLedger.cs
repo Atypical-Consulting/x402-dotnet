@@ -26,10 +26,12 @@ public enum SettlementSlotState
 /// <param name="Existing">The memorised settlement, when the state is <c>AlreadySettled</c>.</param>
 /// <param name="Resource">
 /// The resource URL the memorised settlement paid for, when the state is <c>AlreadySettled</c>.
-/// An authorization presented again is honoured only for that resource.
+/// An authorization presented again is honoured only for that resource. Required, with no
+/// default: an <c>AlreadySettled</c> slot without it refuses every replay. Pass <c>null</c> for the
+/// other states.
 /// </param>
 public readonly record struct SettlementSlot(
-    SettlementSlotState State, SettleResponse? Existing, string? Resource = null);
+    SettlementSlotState State, SettleResponse? Existing, string? Resource);
 
 /// <summary>
 /// Guarantees that one authorization settles at most once, whoever presents it and however often.
