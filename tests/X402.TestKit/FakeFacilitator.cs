@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Nethereum.ABI.EIP712;
 using Nethereum.Signer.EIP712;
 using Nethereum.Util;
 using X402.Assets;
@@ -300,7 +301,11 @@ public sealed class FakeFacilitator : IAsyncDisposable
 
         // 1. Signature: reconstruct the TypedData exactly as the payer signed it.
         var asset = AssetFor(requirements);
-        var typedData = Eip3009TypedData.Build(requirements, authorization, asset);
+        // A real facilitator answers a malformed numeric or nonce with a refusal, not a crash: a
+        // throw here would escape TestServer into the caller as if the transport itself had failed.
+        TypedData<Domain> typedData;
+        try { typedData = Eip3009TypedData.Build(requirements, authorization, asset); }
+        catch (FormatException) { return X402ErrorReason.InvalidPayload; }
 
         string recovered;
         try { recovered = new Eip712TypedDataSigner().RecoverFromSignatureV4(typedData, exact.Signature); }

@@ -226,4 +226,18 @@ public sealed class X402CodecTests
 
         settle.ErrorReason.ShouldBe("insufficient_funds");
     }
+
+    [Fact]
+    public void SettleResponse_with_a_null_transaction_round_trips_through_the_codec()
+    {
+        // Found by CodecPropertyTests: a non-conformant facilitator's "transaction": null was
+        // re-encoded with the required member omitted, so the payer could not decode the
+        // PAYMENT-RESPONSE and lost the failure's errorReason.
+        var failed = new SettleResponse
+        {
+            Success = false, ErrorReason = "insufficient_funds", Transaction = null, Network = "eip155:84532",
+        };
+
+        X402Codec.TryDecode<SettleResponse>(X402Codec.Encode(failed), out _, out _).ShouldBeTrue();
+    }
 }

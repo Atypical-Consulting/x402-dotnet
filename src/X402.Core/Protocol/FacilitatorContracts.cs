@@ -57,9 +57,11 @@ public sealed record SettleResponse
     /// <summary>
     /// Transaction hash, or an empty string when settlement failed. Nullable because a
     /// non-conformant facilitator may send <c>null</c> on failure; its <see cref="ErrorReason"/>
-    /// must still reach the payer.
+    /// must still reach the payer. Always written, even as <c>null</c>: it is a required member,
+    /// and omitting it would make the re-encoded <c>PAYMENT-RESPONSE</c> undecodable.
     /// </summary>
     [JsonPropertyName("transaction")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public required string? Transaction { get; init; }
 
     /// <summary>Network the transaction was broadcast to, in CAIP-2 form.</summary>

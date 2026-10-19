@@ -1,6 +1,6 @@
 ![x402-dotnet](.github/banner.png)
 
-**Website: [atypical-consulting.github.io/x402-dotnet](https://atypical-consulting.github.io/x402-dotnet/)**
+**Website: [atypical-consulting.github.io/x402-dotnet](https://atypical-consulting.github.io/x402-dotnet/)** · **Docs: [guides and API reference](https://atypical-consulting.github.io/x402-dotnet/docs/)**
 
 # x402-dotnet
 
@@ -27,8 +27,9 @@
 [![NuGet Atypical.X402.AspNetCore](https://img.shields.io/nuget/v/Atypical.X402.AspNetCore?logo=nuget&label=Atypical.X402.AspNetCore&color=004880)](https://www.nuget.org/packages/Atypical.X402.AspNetCore/)
 [![NuGet Atypical.X402.Client](https://img.shields.io/nuget/v/Atypical.X402.Client?logo=nuget&label=Atypical.X402.Client&color=004880)](https://www.nuget.org/packages/Atypical.X402.Client/)
 
-<!-- Rangée 5 — Docs (site GitHub Pages depuis site/ ; les ADR font office de documentation d'architecture) -->
+<!-- Rangée 5 — Docs (site GitHub Pages : site/ à la racine, documentation DocFX docs/site/ sous /docs/) -->
 [![Website](https://img.shields.io/badge/website-github.io-2b59f5)](https://atypical-consulting.github.io/x402-dotnet/)
+[![Docs](https://img.shields.io/badge/docs-guides_%26_API-2b59f5)](https://atypical-consulting.github.io/x402-dotnet/docs/)
 [![Docs: ADRs](https://img.shields.io/badge/docs-architecture_decisions-3245b8)](docs/adr)
 
 ## Table of Contents
@@ -263,7 +264,9 @@ dotnet run --project samples/PayingAgent -- --probe
 ## API
 
 Full XML documentation ships inside every package (`GenerateDocumentationFile` is on repo-wide),
-so IntelliSense and IDE hover carry the same text as the source. The surface a typical consumer
+so IntelliSense and IDE hover carry the same text as the source. The same text is published as the
+[API reference](https://atypical-consulting.github.io/x402-dotnet/docs/api/), next to task-oriented
+[guides](https://atypical-consulting.github.io/x402-dotnet/docs/). The surface a typical consumer
 touches:
 
 | Package | Type | What it's for |

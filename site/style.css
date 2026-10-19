@@ -20,6 +20,8 @@
   --on-blue-2: #dfe6ff;
   --code-bg: #eef1fb;
   --mark: #ffe9a8;
+  --tok-string: #8a4b00;    /* amber, from the banner's highlight; 5.8:1 on --code-bg */
+  --tok-number: #a3361f;
 
   --display: "Archivo", "Barlow", system-ui, sans-serif;
   --text: "Barlow", system-ui, sans-serif;
@@ -43,6 +45,8 @@
     --on-blue-2: #dfe6ff;
     --code-bg: #151d38;
     --mark: #3a3410;
+    --tok-string: #f2c46d;
+    --tok-number: #ff9f87;
   }
 }
 
@@ -94,7 +98,8 @@ p { margin: 0 0 1em; text-wrap: pretty; }
 .top nav { display: flex; gap: 22px; margin-left: auto; font-weight: 500; font-size: 1rem; }
 .top nav a { color: var(--ink-2); text-decoration: none; }
 .top nav a:hover { color: var(--ink); }
-@media (max-width: 760px) { .top nav a:not(.gh) { display: none; } }
+.top nav a[aria-current] { color: var(--ink); text-decoration: underline; text-decoration-color: var(--blue); text-decoration-thickness: 2px; text-underline-offset: 0.45em; }
+@media (max-width: 760px) { .top nav a:not(.gh, .keep) { display: none; } .top nav { gap: 18px; } }
 
 /* ---------- hero ---------- */
 .hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); border-bottom: 1px solid var(--rule); }
@@ -222,8 +227,18 @@ pre {
 pre code { font-size: inherit; display: block; overflow-x: auto; }
 code, pre { font-variant-ligatures: none; }
 @media (max-width: 640px) { pre { padding: 52px 18px 18px; } }
-pre .c { color: var(--ink-2); font-style: italic; }
 .file { font: 500 0.78rem/1 var(--mono); letter-spacing: 0.04em; color: var(--ink-2); margin: 18px 0 0; }
+
+/* syntax highlighting (site/vendor/highlight): two hues on top of the ink, both from the palette */
+.hljs-keyword, .hljs-built_in, .hljs-literal, .hljs-meta .hljs-keyword { color: var(--blue-ink); }
+.hljs-string, .hljs-char.escape_, .hljs-subst, .hljs-regexp { color: var(--tok-string); }
+.hljs-number, .hljs-variable, .hljs-template-variable { color: var(--tok-number); }
+.hljs-comment, .hljs-quote, .hljs-meta { color: var(--ink-2); font-style: italic; }
+.hljs-title, .hljs-type, .hljs-attr, .hljs-params, .hljs-function .hljs-title { color: var(--ink); font-weight: 500; }
+.hljs-attr { font-weight: 400; }
+.hljs-punctuation, .hljs-operator { color: var(--ink-2); }
+
+.more { margin-top: 28px; font-weight: 500; }
 
 /* custody */
 .custody { background: var(--ink); color: var(--paper); border-bottom: 0; }
@@ -256,3 +271,95 @@ pre .c { color: var(--ink-2); font-style: italic; }
 footer { padding: 48px 0 64px; font-size: 1rem; color: var(--ink-2); border-top: 1px solid var(--rule); }
 footer .wrap { display: flex; flex-wrap: wrap; gap: 16px 32px; justify-content: space-between; }
 footer ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 24px; }
+
+/* ==========================================================================
+   Documentation (docs/site, rendered by DocFX through templates/x402).
+   Same header, footer, tokens and code setting as the landing page; the frame
+   is a rail of contents, the column stays calm.
+   ========================================================================== */
+.doc { display: grid; grid-template-columns: 15.5rem minmax(0, 1fr); gap: clamp(32px, 5vw, 80px); padding-top: 48px; padding-bottom: 112px; align-items: start; }
+.doc main { min-width: 0; }
+
+/* the rail */
+.rail-toggle > summary { display: none; }
+.rail { position: sticky; top: 84px; max-height: calc(100vh - 108px); overflow-y: auto; scrollbar-width: thin; font-size: 0.98rem; padding-right: 8px; }
+.rail-pkg { font: 500 0.75rem/1.2 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-2); margin: 32px 0 10px; }
+.rail > .rail-pkg:first-child { margin-top: 0; }
+.rail-pkg a { color: inherit; text-decoration: none; }
+.rail-pkg a:hover { color: var(--ink); }
+.rail ul { list-style: none; margin: 0; padding: 0; }
+.rail a { display: block; color: var(--ink-2); text-decoration: none; padding: 5px 10px; margin-left: -10px; border-radius: 6px; line-height: 1.35; }
+.rail a:hover { color: var(--ink); background: var(--code-bg); }
+.rail a[aria-current] { color: var(--blue-ink); background: var(--code-bg); font-weight: 600; }
+.rail-pkg a { display: inline; padding: 0; margin: 0; background: none; }
+.rail-api ul ul { margin: 2px 0 8px 10px; padding-left: 10px; border-left: 1px solid var(--rule); }
+.rail-api ul ul a { font: 400 0.84rem/1.35 var(--mono); padding: 4px 8px; margin-left: -8px; overflow-wrap: anywhere; }
+.rail-api summary { list-style: none; cursor: pointer; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+.rail-api summary::-webkit-details-marker { display: none; }
+.rail-api summary::after { content: ""; width: 7px; height: 7px; margin: 0 6px; border: solid var(--ink-2); border-width: 0 1.5px 1.5px 0; transform: rotate(-45deg); transition: transform 200ms var(--ease); }
+.rail-api details[open] > summary::after { transform: rotate(45deg); }
+.rail-api summary a { font: 500 0.86rem/1.35 var(--mono); overflow-wrap: break-word; }
+
+@media (max-width: 900px) {
+  .doc { grid-template-columns: minmax(0, 1fr); gap: 28px; padding-top: 24px; }
+  .rail-toggle { border: 1px solid var(--rule); border-radius: 10px; background: var(--sheet); }
+  .rail-toggle > summary { display: flex; align-items: center; justify-content: space-between; cursor: pointer; list-style: none; padding: 14px 16px; font: 500 0.82rem/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; }
+  .rail-toggle > summary::-webkit-details-marker { display: none; }
+  .rail-toggle > summary::after { content: ""; width: 8px; height: 8px; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); transition: transform 200ms var(--ease); }
+  .rail-toggle[open] > summary::after { transform: rotate(-135deg); }
+  .rail { position: static; max-height: none; padding: 4px 16px 20px; border-top: 1px solid var(--rule); }
+  .rail > .rail-pkg:first-child { margin-top: 16px; }
+}
+
+/* the column */
+.doc article { max-width: 74ch; }
+.doc article > :first-child { margin-top: 0; }
+.doc h1 { font-size: clamp(2.3rem, 5vw, 3.6rem); line-height: 1; letter-spacing: -0.03em; margin: 0 0 0.5em; overflow-wrap: anywhere; }
+.doc article h2 { font-size: clamp(1.6rem, 2.6vw, 2.05rem); letter-spacing: -0.02em; margin: 2.2em 0 0.6em; }
+.doc article h3 { font-size: 1.3rem; margin: 1.9em 0 0.5em; }
+.doc article h4 { font: 500 0.78rem/1.2 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-2); margin: 1.8em 0 0.6em; }
+.doc article h1 + p { font-size: 1.25rem; line-height: 1.5; color: var(--ink-2); }
+.doc article ul, .doc article ol { padding-left: 1.3em; margin: 0 0 1em; }
+.doc article li { margin: 0.3em 0; }
+.doc article li::marker { color: var(--blue-ink); }
+.doc article blockquote { margin: 1.4em 0; padding: 0 0 0 20px; border-left: 1px solid var(--ink); color: var(--ink-2); }
+.doc article hr { border: 0; border-top: 1px solid var(--rule); margin: 3em 0; }
+.doc :not(pre) > code { white-space: normal; overflow-wrap: break-word; }
+.doc pre { margin: 16px 0 24px; }
+
+/* tables: a parts list, as on the landing page */
+.doc article table { border-collapse: collapse; margin: 20px 0 28px; font-size: 1rem; display: block; overflow-x: auto; }
+.doc article th, .doc article td { text-align: left; vertical-align: top; padding: 12px 20px 12px 0; border-top: 1px solid var(--rule); }
+.doc article thead th { font: 500 0.75rem/1.2 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-2); border-top: 0; padding-top: 0; }
+.doc article tbody tr:last-child td { border-bottom: 1px solid var(--rule); }
+
+/* callouts: the landing page's ruled box */
+.doc .NOTE, .doc .TIP, .doc .IMPORTANT, .doc .WARNING, .doc .CAUTION { border: 1.5px solid var(--ink); padding: 18px 22px 4px; margin: 28px 0; }
+.doc .IMPORTANT, .doc .WARNING, .doc .CAUTION { border-color: var(--blue-ink); }
+.doc .NOTE h5, .doc .TIP h5, .doc .IMPORTANT h5, .doc .WARNING h5, .doc .CAUTION h5 { font: 500 0.75rem/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-2); margin: 0 0 12px; }
+.doc .IMPORTANT h5, .doc .WARNING h5, .doc .CAUTION h5 { color: var(--blue-ink); }
+
+/* API reference pages */
+.doc .facts { display: flex; flex-wrap: wrap; gap: 6px 28px; margin: -0.6em 0 1.4em; font-size: 0.95rem; color: var(--ink-2); }
+.doc .facts dl, .doc .facts dd { margin: 0; }
+.doc .facts dl { display: flex; gap: 8px; }
+.doc .facts dt { font: 500 0.75rem/1.9 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; }
+.doc .typelist { margin: 0 0 1.2em; font: 400 0.86rem/1.7 var(--mono); }
+.doc .typelist dt { font: 500 0.75rem/1.2 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-2); margin: 1.4em 0 0.5em; }
+.doc .typelist dd { margin: 0; }
+.doc .inheritance dd { display: flex; flex-wrap: wrap; gap: 0 0.6em; }
+.doc .inheritance dd div + div::before { content: "› "; color: var(--ink-2); }
+.doc .inheritedMembers dd { display: flex; flex-wrap: wrap; gap: 0 1.2em; }
+.doc .inheritedMembers a { color: var(--ink-2); }
+.doc article h3[data-uid] { font: 500 1.12rem/1.4 var(--mono); letter-spacing: 0; padding-top: 28px; margin-top: 44px; border-top: 1px solid var(--rule); overflow-wrap: anywhere; }
+.doc .parameters { margin: 0 0 1em; }
+.doc .parameters dt { font: 400 0.92rem/1.5 var(--mono); margin-top: 0.6em; overflow-wrap: anywhere; }
+.doc .parameters dd { margin: 0.2em 0 0.8em; color: var(--ink-2); }
+.doc .parameters dd > p:last-child { margin-bottom: 0; }
+.doc article .text-break { overflow-wrap: anywhere; }
+
+/* the way forward */
+.doc .next { display: block; margin-top: 72px; padding: 24px 0 0; border-top: 1.5px solid var(--ink); color: var(--ink); text-decoration: none; font: 800 1.5rem/1.2 var(--display); letter-spacing: -0.02em; transition: color 250ms var(--ease), padding 250ms var(--ease); }
+.doc .next span { display: block; font: 500 0.75rem/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-2); margin-bottom: 10px; }
+.doc .next:hover { color: var(--blue-ink); padding-left: 8px; }
+.doc .next::after { content: " →"; }

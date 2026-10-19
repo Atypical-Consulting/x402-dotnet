@@ -15,6 +15,8 @@
          observable HTTP behavior rather than internal calls. -->
     <PackageReference Include="Microsoft.AspNetCore.TestHost" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="FsCheck" />
+    <PackageReference Include="FsCheck.Xunit.v3" />
     <PackageReference Include="Shouldly" />
     <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio">
@@ -22,6 +24,11 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="coverlet.MTP" />
+  </ItemGroup>
+
+  <!-- One set of valid-protocol-object generators, shared with the Core tests. -->
+  <ItemGroup>
+    <Compile Include="..\X402.Core.Tests\X402Arbitraries.cs" Link="X402Arbitraries.cs" />
   </ItemGroup>
 
   <ItemGroup>

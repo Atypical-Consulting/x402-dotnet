@@ -83,23 +83,17 @@ public sealed class PayingClientHarness : IDisposable
         .Where(r => r.Payload is not null)
         .Select(r => r.Payload!.AsExactEvm().Authorization.Nonce)];
 
-    /// <summary>Builds a harness around a hand-written response function — for scenarios with no payment involved.</summary>
-    public static PayingClientHarness Create(Func<HttpRequestMessage, HttpResponseMessage> respond)
-    {
-        ArgumentNullException.ThrowIfNull(respond);
-
-        return Create(respond, _ => { });
-    }
-
-    /// <summary>Same as <see cref="Create(Func{HttpRequestMessage, HttpResponseMessage})"/>, with the client options configured first.</summary>
+    /// <summary>
+    /// Builds a harness around a hand-written response function — for scenarios with no payment
+    /// involved, or, with <paramref name="configure"/> declaring limits, ones that may pay.
+    /// </summary>
     public static PayingClientHarness Create(
-        Func<HttpRequestMessage, HttpResponseMessage> respond, Action<X402ClientOptions> configure)
+        Func<HttpRequestMessage, HttpResponseMessage> respond, Action<X402ClientOptions>? configure = null)
     {
         ArgumentNullException.ThrowIfNull(respond);
-        ArgumentNullException.ThrowIfNull(configure);
 
         var options = new X402ClientOptions();
-        configure(options);
+        configure?.Invoke(options);
         return new PayingClientHarness(options, (request, _) => Task.FromResult(respond(request)));
     }
 
