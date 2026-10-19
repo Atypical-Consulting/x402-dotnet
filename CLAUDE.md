@@ -44,6 +44,8 @@ mirror the code:
   packs it as `README.md` inside the package; the root `README.md` is the repo-facing one)
 - `samples/README.md` — the two runnable samples and their *real, unedited* console output; if a
   code change alters that output, re-run the sample and paste the new output, don't hand-edit it
+- `docs/site/` — the DocFX guides served under `/docs/` of the Pages site (`site/` is the landing
+  page); every C# snippet there must compile against the current public API
 - `docs/adr/` — add a new ADR (see `docs/adr/template.md`) for any decision that deviates from the
   obvious reading of a requirement; don't silently contradict an existing one
 - `CHANGELOG.md` — maintained by `release-please`; don't hand-edit it
