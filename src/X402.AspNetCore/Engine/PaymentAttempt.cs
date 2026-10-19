@@ -58,6 +58,16 @@ public sealed class PaymentAttempt
     /// </summary>
     internal PaymentRequired? Demand { get; private init; }
 
+    /// <summary>Why settlement failed, once <see cref="X402PaymentProcessor.SettleAsync"/> says it did.</summary>
+    internal string? SettlementError { get; set; }
+
+    /// <summary>
+    /// The 402 written when settlement fails after the endpoint ran: <see cref="Demand"/>, carrying
+    /// the facilitator's reason so the payer learns why.
+    /// </summary>
+    internal PaymentRequired SettlementFailedDemand =>
+        Demand! with { Error = SettlementError ?? X402ErrorReason.UnexpectedSettleError };
+
     /// <summary>Builds the refusal returned when no usable proof of payment reaches the engine.</summary>
     internal static PaymentAttempt Refused(PaymentRequiredResult result) => new()
     {

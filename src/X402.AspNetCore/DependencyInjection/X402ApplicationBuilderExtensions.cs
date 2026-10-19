@@ -34,17 +34,7 @@ public static class X402ApplicationBuilderExtensions
 
         foreach (var route in routes)
         {
-            foreach (var price in route.Prices)
-            {
-                if (!assets.TryGetByAddress(price.Asset.Address, out _))
-                {
-                    throw new InvalidOperationException(
-                        $"Route '{route.Pattern}' is priced in {price.Asset.Symbol} " +
-                        $"({price.Asset.Address}) on {price.Asset.Network}, which this server " +
-                        "does not accept. Add it to X402:Assets, or price the route in an " +
-                        $"accepted asset: {string.Join(", ", assets.All.Select(a => a.Symbol))}.");
-                }
-            }
+            assets.EnsureAccepted(route.Prices, $"Route '{route.Pattern}'");
         }
 
         return app.UseMiddleware<X402Middleware>(routes);

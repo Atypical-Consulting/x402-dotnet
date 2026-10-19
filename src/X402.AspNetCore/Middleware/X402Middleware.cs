@@ -89,7 +89,7 @@ internal sealed partial class X402Middleware(
             context.Response.ContentLength = null;
             if (feature.Attempt is { } attempt)
             {
-                await new PaymentRequiredResult(attempt.Demand!).ExecuteAsync(context);
+                await new PaymentRequiredResult(attempt.SettlementFailedDemand).ExecuteAsync(context);
             }
             else
             {
@@ -114,7 +114,7 @@ internal sealed partial class X402Middleware(
             var identity = feature.Attempt.Identity;
             if (!buffering.Overflowed && !buffering.Poisoned)
             {
-                await ledger.AbandonAsync(identity, context.RequestAborted);
+                await ledger.AbandonAsync(identity, CancellationToken.None);
                 EndpointThrewAuthorizationAbandoned(
                     logger, exception, identity.Network, identity.Asset, identity.Nonce);
             }

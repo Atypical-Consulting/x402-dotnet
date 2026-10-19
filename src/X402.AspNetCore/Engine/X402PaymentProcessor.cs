@@ -60,12 +60,22 @@ internal sealed class X402PaymentProcessor(
         {
             const string reason =
                 "the payment names a scheme, network or asset this resource does not accept";
-            await RecordAsync(PaymentEventStatus.VerificationFailed, offered[0], resource,
-                payload!.Accepted.Asset, reason, cancellationToken);
+            // The payer is unknown before verification: nothing client-supplied goes in its place.
+            await RecordAsync(PaymentEventStatus.VerificationFailed, offered[0], resource, null,
+                reason, cancellationToken);
             return PaymentAttempt.Refused(Demand(resource, offered, reason));
         }
 
         var (requirements, asset) = matched.Value;
+
+        // 2b. The ledger key must be canonical: a bytes32 nonce written in another hex case is the
+        //     same authorization, and must not claim a second slot (and run the endpoint again).
+        if (!TryReadCanonicalNonce(payload!, out var nonce))
+        {
+            await RecordAsync(PaymentEventStatus.VerificationFailed, requirements, resource, null,
+                X402ErrorReason.InvalidPayload, cancellationToken);
+            return PaymentAttempt.Refused(Demand(resource, offered, X402ErrorReason.InvalidPayload));
+        }
 
         // 3. Have OUR requirement verified.
         VerifyResponse verify;
@@ -93,18 +103,66 @@ internal sealed class X402PaymentProcessor(
             cancellationToken);
 
         // 4. Idempotency guard, before any execution.
-        var authorization = payload!.AsExactEvm().Authorization;
-        var identity = new PaymentIdentity(requirements.Network, requirements.Asset, authorization.Nonce);
+        var identity = new PaymentIdentity(requirements.Network, requirements.Asset, nonce);
         var slot = await ledger.AcquireAsync(identity, cancellationToken);
 
-        return slot.State switch
+        switch (slot.State)
         {
-            SettlementSlotState.AlreadySettled => PaymentAttempt.AlreadySettled(
-                payload!, requirements, asset, verify.Payer, identity, slot.Existing!, resource, offered),
-            SettlementSlotState.InFlight => PaymentAttempt.Conflict(
-                "this authorization is being settled by another request"),
-            _ => PaymentAttempt.Accepted(payload!, requirements, asset, verify.Payer, identity, resource, offered),
-        };
+            case SettlementSlotState.InFlight:
+                return PaymentAttempt.Conflict("this authorization is being settled by another request");
+
+            case SettlementSlotState.AlreadySettled:
+                // A settled authorization re-delivers only what it paid for: the EIP-3009
+                // signature does not cover the resource, so without this check one payment would
+                // unlock every route priced the same. A failed settlement is refused outright,
+                // without running the endpoint (and its side effects) again.
+                var memorised = slot.Existing!;
+                var refusal =
+                    !memorised.Success ? memorised.ErrorReason ?? X402ErrorReason.UnexpectedSettleError
+                    : !string.Equals(slot.Resource, resource.Url, StringComparison.Ordinal)
+                        ? "this authorization already paid for a different resource"
+                    : null;
+                if (refusal is not null)
+                {
+                    await RecordAsync(PaymentEventStatus.VerificationFailed, requirements, resource,
+                        verify.Payer, refusal, cancellationToken);
+                    return PaymentAttempt.Refused(Demand(resource, offered, refusal));
+                }
+
+                return PaymentAttempt.AlreadySettled(
+                    payload!, requirements, asset, verify.Payer, identity, memorised, resource, offered);
+
+            default:
+                return PaymentAttempt.Accepted(
+                    payload!, requirements, asset, verify.Payer, identity, resource, offered);
+        }
+    }
+
+    /// <summary>
+    /// Reads the exact/EVM nonce and canonicalises it (0x plus 64 lowercase hex digits). False for a
+    /// payload that is not an exact/EVM payload at all, or whose nonce is not a bytes32.
+    /// </summary>
+    private static bool TryReadCanonicalNonce(PaymentPayload payload, out string nonce)
+    {
+        nonce = "";
+        string raw;
+        try
+        {
+            raw = payload.AsExactEvm().Authorization.Nonce;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return false;
+        }
+
+        if (raw.Length != 66 || !raw.StartsWith("0x", StringComparison.Ordinal)
+            || raw.AsSpan(2).ContainsAnyExcept("0123456789abcdefABCDEF"))
+        {
+            return false;
+        }
+
+        nonce = raw.ToLowerInvariant();
+        return true;
     }
 
     /// <summary>Settles an accepted attempt and writes the settlement header.</summary>
@@ -127,8 +185,11 @@ internal sealed class X402PaymentProcessor(
         catch (FacilitatorException exception)
         {
             logger.LogError(exception, "x402 settlement could not reach the facilitator");
-            // Settlement provably did not happen: the authorization is still valid on-chain, so
-            // release it for a retry rather than leaving it stuck as in-flight forever.
+            // Released for a retry rather than left in flight. Not proof settlement did not
+            // happen: a timeout or a connection reset after the request went out is ambiguous, and
+            // the facilitator may have broadcast anyway. A retry then fails on the used nonce, so
+            // this can withhold content that was in fact paid for — never deliver content unpaid.
+            attempt.SettlementError = X402ErrorReason.UnexpectedSettleError;
             await ledger.AbandonAsync(attempt.Identity, cancellationToken);
             await RecordAsync(PaymentEventStatus.SettlementFailed, attempt.Requirements!,
                 attempt.Demand?.Resource, attempt.Payer, X402ErrorReason.UnexpectedSettleError,
@@ -138,8 +199,12 @@ internal sealed class X402PaymentProcessor(
 
         // CompleteAsync never throws: it persists whatever it is handed, inserting the entry if it
         // was pruned in the meantime. No defensive try/catch belongs here.
-        await ledger.CompleteAsync(attempt.Identity, settle, cancellationToken);
+        await ledger.CompleteAsync(attempt.Identity, settle, attempt.Demand!.Resource.Url, cancellationToken);
         context.Response.Headers[X402Headers.PaymentResponse] = X402Codec.Encode(settle);
+        if (!settle.Success)
+        {
+            attempt.SettlementError = settle.ErrorReason ?? X402ErrorReason.UnexpectedSettleError;
+        }
 
         await RecordAsync(
             settle.Success ? PaymentEventStatus.Settled : PaymentEventStatus.SettlementFailed,
@@ -161,7 +226,10 @@ internal sealed class X402PaymentProcessor(
     internal BufferingResponseBodyFeature OpenBuffering(
         HttpContext context, X402RequestFeature feature, PaymentAttempt attempt)
     {
-        var buffering = InstallBuffering(context, feature, ct => SettleAsync(context, attempt, ct));
+        // Settlement never runs on the client's connection token: a disconnect mid-settle would
+        // otherwise leave the authorization neither completed nor abandoned in the ledger.
+        var buffering = InstallBuffering(
+            context, feature, _ => SettleAsync(context, attempt, CancellationToken.None));
         feature.Attempt = attempt;
         return buffering;
     }
@@ -213,6 +281,18 @@ internal sealed class X402PaymentProcessor(
     internal async Task FinishAsync(
         HttpContext context, PaymentAttempt attempt, BufferingResponseBodyFeature buffering)
     {
+        // Bytes still held by a PipeWriter the endpoint never flushed are not in the buffer yet.
+        // Push them in first, so the decision below sees the whole response — and so
+        // FlushBufferAsync cannot cross the cap, and settle a second time, after settling here.
+        try
+        {
+            await buffering.FlushWriterAsync(CancellationToken.None);
+        }
+        catch (BufferingSettlementFailedException)
+        {
+            // The flush crossed the cap and that settlement failed: Poisoned, handled below.
+        }
+
         if (buffering.Poisoned)
         {
             // BufferingSettlementFailedException was thrown at the cap and swallowed somewhere
@@ -233,7 +313,7 @@ internal sealed class X402PaymentProcessor(
             // PaymentRequiredResult writes below, where a real transport (Kestrel, unlike
             // TestServer) aborts the response trying to satisfy it.
             context.Response.ContentLength = null;
-            await new PaymentRequiredResult(attempt.Demand!).ExecuteAsync(context);
+            await new PaymentRequiredResult(attempt.SettlementFailedDemand).ExecuteAsync(context);
             return;
         }
 
@@ -244,7 +324,20 @@ internal sealed class X402PaymentProcessor(
             return;
         }
 
-        var settled = await SettleAsync(context, attempt, context.RequestAborted);
+        if (context.Response.StatusCode >= 400)
+        {
+            // The endpoint answered with an error, not with what was paid for: deliver the error
+            // and do not charge for it. The authorization stays usable for a retry.
+            if (attempt.MemorisedSettlement is null)
+            {
+                await ledger.AbandonAsync(attempt.Identity, CancellationToken.None);
+            }
+
+            await buffering.FlushBufferAsync(context.RequestAborted);
+            return;
+        }
+
+        var settled = await SettleAsync(context, attempt, CancellationToken.None);
         if (settled)
         {
             await buffering.FlushBufferAsync(context.RequestAborted);
@@ -263,7 +356,7 @@ internal sealed class X402PaymentProcessor(
         // Content-Length regardless, since a blanket Headers.Clear() here would also strip
         // anything outer middleware, CORS or otherwise, wrote directly onto this response.)
         context.Response.ContentLength = null;
-        await new PaymentRequiredResult(attempt.Demand!).ExecuteAsync(context);
+        await new PaymentRequiredResult(attempt.SettlementFailedDemand).ExecuteAsync(context);
     }
 
     private ResourceInfo BuildResourceInfo(HttpContext context, ResourceInfoOverrides? overrides)

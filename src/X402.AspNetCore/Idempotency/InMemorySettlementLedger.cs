@@ -21,11 +21,14 @@ namespace X402.AspNetCore.Idempotency;
 /// </remarks>
 public sealed partial class InMemorySettlementLedger : ISettlementLedger
 {
+    private static readonly TimeSpan PruneInterval = TimeSpan.FromSeconds(30);
+
     private readonly ConcurrentDictionary<PaymentIdentity, Entry> entries = new();
     private readonly TimeSpan retention;
     private readonly TimeSpan leaseTimeout;
     private readonly TimeProvider time;
     private readonly ILogger<InMemorySettlementLedger> logger;
+    private long nextPruneTicks;
 
     /// <summary>Creates a ledger retaining entries for the given durations.</summary>
     /// <param name="retention">How long a completed settlement is remembered. Defaults to 10 minutes.</param>
@@ -54,42 +57,51 @@ public sealed partial class InMemorySettlementLedger : ISettlementLedger
         PaymentIdentity identity, CancellationToken cancellationToken = default)
     {
         var now = time.GetUtcNow();
-        Prune(now);
+        PruneIfDue(now);
 
-        var fresh = new Entry(now + leaseTimeout, null);
-        var existing = entries.GetOrAdd(identity, fresh);
-
-        if (ReferenceEquals(existing, fresh))
+        var fresh = new Entry(now + leaseTimeout, null, null);
+        while (true)
         {
-            return ValueTask.FromResult(new SettlementSlot(SettlementSlotState.Acquired, null));
-        }
+            var existing = entries.GetOrAdd(identity, fresh);
 
-        // No separate "expired but not yet pruned" case to handle here: Prune, just above, removes
-        // every entry whose ExpiresAt <= now using this same now. For `existing` to reach this point
-        // already expired, another caller would have to have inserted it after our Prune ran — but
-        // every entry a caller inserts is stamped with its own now plus a strictly positive duration
-        // (lease timeout or retention), and real time only moves forward, so that stamp can never
-        // already be <= a now captured before the insert happened. `existing` is therefore always
-        // either in flight or already settled here, never stale.
-        return ValueTask.FromResult(existing.Response is { } response
-            ? new SettlementSlot(SettlementSlotState.AlreadySettled, response)
-            : new SettlementSlot(SettlementSlotState.InFlight, null));
+            if (ReferenceEquals(existing, fresh))
+            {
+                return ValueTask.FromResult(new SettlementSlot(SettlementSlotState.Acquired, null));
+            }
+
+            // Pruning is throttled, so an expired entry can still be here: treat it as absent.
+            if (existing.ExpiresAt <= now)
+            {
+                if (entries.TryUpdate(identity, fresh, existing))
+                {
+                    return ValueTask.FromResult(new SettlementSlot(SettlementSlotState.Acquired, null));
+                }
+
+                continue; // Lost a race; re-read and resolve against the new state.
+            }
+
+            return ValueTask.FromResult(existing.Response is { } response
+                ? new SettlementSlot(SettlementSlotState.AlreadySettled, response, existing.Resource)
+                : new SettlementSlot(SettlementSlotState.InFlight, null));
+        }
     }
 
     /// <inheritdoc />
     public ValueTask CompleteAsync(
-        PaymentIdentity identity, SettleResponse response, CancellationToken cancellationToken = default)
+        PaymentIdentity identity, SettleResponse response, string resource,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(response);
+        ArgumentNullException.ThrowIfNull(resource);
 
-        var completed = new Entry(time.GetUtcNow() + retention, response);
+        var completed = new Entry(time.GetUtcNow() + retention, response, resource);
 
         while (true)
         {
             if (!entries.TryGetValue(identity, out var existing))
             {
                 // Absent: never acquired, or — far more likely in practice — the lease was reclaimed
-                // by Prune's abandoned-lease backstop while this settlement was still in flight (see
+                // by the abandoned-lease sweep (PruneIfDue) while this settlement was still in flight (see
                 // AcquireAsync's remarks). Either way the settlement already happened on-chain, and
                 // refusing to record it is what would create a double payment, not recording it too
                 // eagerly. Insert rather than reject; a missing entry here is not proof of a bug.
@@ -144,7 +156,7 @@ public sealed partial class InMemorySettlementLedger : ISettlementLedger
     /// <inheritdoc />
     public ValueTask AbandonAsync(PaymentIdentity identity, CancellationToken cancellationToken = default)
     {
-        // Same defensive shape as Prune: remove only the specific entry read a moment ago, and only
+        // Same defensive shape as PruneIfDue: remove only the specific entry read a moment ago, and only
         // while it is still in flight (no memorised response). A completed entry must never be
         // erased by an abandon that races — or is mistakenly called — after CompleteAsync.
         if (entries.TryGetValue(identity, out var existing) && existing.Response is null)
@@ -155,8 +167,19 @@ public sealed partial class InMemorySettlementLedger : ISettlementLedger
         return ValueTask.CompletedTask;
     }
 
-    private void Prune(DateTimeOffset now)
+    /// <summary>
+    /// Sweeps expired entries at most once per <see cref="PruneInterval"/>: a full scan on every
+    /// acquisition would cost O(live entries) per paid request.
+    /// </summary>
+    private void PruneIfDue(DateTimeOffset now)
     {
+        var due = Interlocked.Read(ref nextPruneTicks);
+        if (now.UtcTicks < due
+            || Interlocked.CompareExchange(ref nextPruneTicks, now.UtcTicks + PruneInterval.Ticks, due) != due)
+        {
+            return;
+        }
+
         foreach (var (key, entry) in entries)
         {
             if (entry.ExpiresAt <= now)
@@ -180,5 +203,5 @@ public sealed partial class InMemorySettlementLedger : ISettlementLedger
     private static partial void ConflictingCompletion(ILogger logger, string network, string asset,
         string nonce, string existingTransaction, string newTransaction);
 
-    private sealed record Entry(DateTimeOffset ExpiresAt, SettleResponse? Response);
+    private sealed record Entry(DateTimeOffset ExpiresAt, SettleResponse? Response, string? Resource);
 }

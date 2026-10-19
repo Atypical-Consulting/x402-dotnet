@@ -215,9 +215,19 @@ public sealed class PaymentProcessorTests : IAsyncLifetime
 
     [Theory]
     [InlineData(PaymentEventStatus.PaymentRequired)]
+    [InlineData(PaymentEventStatus.Verified)]
     [InlineData(PaymentEventStatus.Settled)]
+    [InlineData(PaymentEventStatus.VerificationFailed)]
+    [InlineData(PaymentEventStatus.SettlementFailed)]
     public async Task Every_terminal_branch_records_a_payment_event(PaymentEventStatus expected)
     {
+        server.Facilitator.Scenario = expected switch
+        {
+            PaymentEventStatus.VerificationFailed => FakeFacilitatorScenario.InsufficientFunds,
+            PaymentEventStatus.SettlementFailed => FakeFacilitatorScenario.SettleFailure,
+            _ => FakeFacilitatorScenario.Valid,
+        };
+
         if (expected == PaymentEventStatus.PaymentRequired)
         {
             await server.Client.GetAsync("/premium", TestContext.Current.CancellationToken);
@@ -228,6 +238,179 @@ public sealed class PaymentProcessorTests : IAsyncLifetime
         }
 
         server.Events.ShouldContain(e => e.Status == expected);
+    }
+
+    [Fact]
+    public async Task A_settled_event_carries_the_transaction_hash()
+    {
+        await server.PayAsync("/premium", KnownAssets.EurcBaseSepolia);
+
+        server.Events.Single(e => e.Status == PaymentEventStatus.Settled)
+            .Transaction.ShouldStartWith("0x");
+    }
+
+    [Fact]
+    public async Task A_mismatched_payment_records_no_client_supplied_payer()
+    {
+        await server.PayWithForeignAssetAsync("/premium");
+
+        server.Events.Single(e => e.Status == PaymentEventStatus.VerificationFailed).Payer.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task A_settlement_failure_tells_the_payer_why()
+    {
+        server.Facilitator.Scenario = FakeFacilitatorScenario.SettleFailure;
+
+        var response = await server.PayAsync("/premium", KnownAssets.EurcBaseSepolia);
+
+        server.DecodeDemand(response).Error.ShouldBe(X402ErrorReason.InvalidTransactionState);
+    }
+
+    [Fact]
+    public async Task An_error_response_from_a_paid_route_is_not_charged()
+    {
+        var response = await server.PayAsync("/not-found", KnownAssets.EurcBaseSepolia);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        server.Facilitator.SettleCallCount.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task A_settled_authorization_does_not_unlock_another_route_at_the_same_price()
+    {
+        // /large carries exactly /premium's prices. The EIP-3009 signature does not cover the
+        // resource, so only the ledger can stop one payment from opening every such route.
+        var payload = await server.SignFor("/premium", KnownAssets.EurcBaseSepolia);
+        (await server.SendAsync("/premium", payload)).StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        var replay = await server.SendAsync("/large", payload);
+
+        replay.StatusCode.ShouldBe(HttpStatusCode.PaymentRequired);
+    }
+
+    [Fact]
+    public async Task A_failed_settlement_presented_again_is_refused_without_running_the_endpoint()
+    {
+        server.Facilitator.Scenario = FakeFacilitatorScenario.SettleFailure;
+        var payload = await server.SignFor("/premium", KnownAssets.EurcBaseSepolia);
+        await server.SendAsync("/premium", payload);
+
+        var replay = await server.SendAsync("/premium", payload);
+
+        replay.StatusCode.ShouldBe(HttpStatusCode.PaymentRequired);
+        server.BufferedRequestCount.ShouldBe(1); // only the first presentation reached the endpoint
+    }
+
+    [Fact]
+    public async Task A_nonce_written_in_another_hex_case_is_the_same_authorization()
+    {
+        var payload = await server.SignFor("/premium", KnownAssets.EurcBaseSepolia);
+        await server.SendAsync("/premium", payload);
+        var exact = payload.AsExactEvm();
+        var shouted = payload.WithExactEvm(exact with
+        {
+            Authorization = exact.Authorization with
+            {
+                Nonce = "0x" + exact.Authorization.Nonce[2..].ToUpperInvariant(),
+            },
+        });
+
+        await server.SendAsync("/premium", shouted);
+
+        server.Facilitator.SettleCallCount.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task A_nonce_that_is_not_a_bytes32_is_refused_before_verification()
+    {
+        var payload = await server.SignFor("/premium", KnownAssets.EurcBaseSepolia);
+        var exact = payload.AsExactEvm();
+        var malformed = payload.WithExactEvm(exact with
+        {
+            Authorization = exact.Authorization with { Nonce = "0x1234" },
+        });
+
+        var response = await server.SendAsync("/premium", malformed);
+
+        server.DecodeDemand(response).Error.ShouldBe(X402ErrorReason.InvalidPayload);
+        server.Facilitator.VerifyCallCount.ShouldBe(0);
+    }
+
+    [Theory]
+    [InlineData("""{"x402Version":2,"accepted":null,"payload":{}}""")]
+    [InlineData("""{"x402Version":2,"accepted":{"scheme":"exact","network":"eip155:84532","amount":"10000","asset":"0x808456652fdb597867f38412077A9182bf77359F","payTo":"0x209693Bc6afc0C5328bA36FaF03C514EF312287C","maxTimeoutSeconds":60},"payload":42}""")]
+    [InlineData("""{"x402Version":2,"accepted":{"scheme":"exact","network":"eip155:84532","amount":"10000","asset":"0x808456652fdb597867f38412077A9182bf77359F","payTo":"0x209693Bc6afc0C5328bA36FaF03C514EF312287C","maxTimeoutSeconds":60},"payload":{"signature":"0x00","authorization":null}}""")]
+    public async Task A_structurally_broken_payment_gets_402_without_reaching_the_facilitator(string json)
+    {
+        // Unauthenticated input: a null where the protocol requires a value must be a refusal,
+        // not a NullReferenceException turned into a 500 and an error log entry.
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/premium");
+        request.Headers.TryAddWithoutValidation(
+            X402Headers.PaymentSignature, Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(json)));
+
+        var response = await server.Client.SendAsync(request, TestContext.Current.CancellationToken);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.PaymentRequired);
+        server.Facilitator.VerifyCallCount.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task A_settlement_that_cannot_reach_the_facilitator_releases_the_authorization_for_retry()
+    {
+        // settle is attempted twice (one retry) on a transport failure; both fail here.
+        server.Facilitator.FailNextSettleCalls(2, FakeFacilitatorScenario.NetworkFailure);
+        var payload = await server.SignFor("/premium", KnownAssets.EurcBaseSepolia);
+        var first = await server.SendAsync("/premium", payload);
+        server.DecodeDemand(first).Error.ShouldBe(X402ErrorReason.UnexpectedSettleError);
+
+        var retry = await server.SendAsync("/premium", payload);
+
+        retry.StatusCode.ShouldBe(HttpStatusCode.OK); // not 409: the slot was abandoned
+    }
+
+    [Fact]
+    public async Task An_unreachable_facilitator_during_verify_gets_402_and_never_settles()
+    {
+        // verify is attempted three times (two retries) on a transport failure.
+        server.Facilitator.FailNextCalls(3, FakeFacilitatorScenario.NetworkFailure);
+
+        var response = await server.PayAsync("/premium", KnownAssets.EurcBaseSepolia);
+
+        server.DecodeDemand(response).Error.ShouldBe(X402ErrorReason.UnexpectedVerifyError);
+        server.Facilitator.SettleCallCount.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task A_client_disconnecting_mid_settlement_does_not_strand_the_authorization()
+    {
+        // The first settle attempt hangs past its 1s attempt timeout; the client gives up first.
+        // Settlement must carry on regardless — its retry succeeds — and be recorded, rather than
+        // being cancelled with the connection and left in flight (every retry a 409) for an hour.
+        await using var slow = await PaidServerFixture.StartAsync(options => options.MaxTimeoutSeconds = 1);
+        slow.Facilitator.TimeoutDelay = TimeSpan.FromSeconds(5);
+        slow.Facilitator.FailNextSettleCalls(1, FakeFacilitatorScenario.Timeout);
+        var demand = slow.DecodeDemand(
+            await slow.Client.GetAsync("/premium", TestContext.Current.CancellationToken));
+        var payload = await TestData.SignedPayloadAsync(
+            demand.Accepts[0], validBefore: DateTimeOffset.UtcNow.AddMinutes(5));
+
+        using (var abandon = new CancellationTokenSource(TimeSpan.FromMilliseconds(300)))
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, "/premium");
+            request.Headers.TryAddWithoutValidation(X402Headers.PaymentSignature, X402Codec.Encode(payload));
+            await Should.ThrowAsync<OperationCanceledException>(
+                () => slow.Client.SendAsync(request, abandon.Token));
+        }
+
+        for (var i = 0; i < 100 && !slow.Events.Any(e => e.Status == PaymentEventStatus.Settled); i++)
+        {
+            await Task.Delay(50, TestContext.Current.CancellationToken);
+        }
+
+        var retry = await slow.SendAsync("/premium", payload);
+
+        retry.StatusCode.ShouldBe(HttpStatusCode.OK);
     }
 
     [Fact]
