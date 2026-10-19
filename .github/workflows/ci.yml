@@ -52,20 +52,27 @@ jobs:
   # Publishes the three packages to NuGet.org for a manually pushed v* tag (e.g. a hotfix tagged
   # by hand). release-please.yml's own `publish` job is the primary path for a release-please
   # release — see its comment for why a release-please-created tag can't rely on this trigger
-  # firing. --skip-duplicate makes running both for the same tag harmless.
+  # firing. --skip-duplicate makes running both for the same tag harmless. Both publish paths
+  # also attest build provenance; two attestations for the same .nupkg digest are harmless too.
   publish:
     needs: build
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
-      id-token: write # request the GitHub OIDC token for NuGet Trusted Publishing
+      id-token: write # request the GitHub OIDC token for NuGet Trusted Publishing (and Sigstore)
+      attestations: write # record build provenance for the .nupkg files
     steps:
       - name: Download packages
         uses: actions/download-artifact@v8
         with:
           name: nuget-packages
           path: ./nupkg
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: ./nupkg/*.nupkg
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v6

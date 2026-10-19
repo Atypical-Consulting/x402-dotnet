@@ -97,6 +97,20 @@ published separately for tooling that only needs the wire format.
 > belong to a different `x402` implementation ([michielpost/x402-dotnet](https://github.com/michielpost/x402-dotnet)),
 > which this project is unrelated to. See [ADR 0004](docs/adr/0004-prefix-the-package-ids-with-atypical.md).
 
+### Verifying a package
+
+Every `.nupkg` released after v0.1.0 carries a signed [build-provenance attestation](https://docs.github.com/actions/security-for-github-actions/using-artifact-attestations)
+tying it to the commit and workflow run that built it:
+
+```bash
+gh release download vX.Y.Z --repo Atypical-Consulting/x402-dotnet --pattern '*.nupkg'
+gh attestation verify Atypical.X402.Core.X.Y.Z.nupkg --repo Atypical-Consulting/x402-dotnet
+```
+
+Verify the copy attached to the **GitHub Release**. A copy downloaded from nuget.org will not match:
+nuget.org adds its repository signature to every package it accepts, which changes the file's
+bytes. v0.1.0 predates the attestations and has none.
+
 ## Quick Start
 
 Five minutes. Steps 1–3 and 5 build your own API and client; step 4 is the no-wallet first run,
