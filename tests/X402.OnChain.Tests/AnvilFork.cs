@@ -65,9 +65,18 @@ public sealed class AnvilFork : IAsyncLifetime
             return;
         }
 
-        RpcUrl = Environment.GetEnvironmentVariable("X402_ANVIL_RPC_URL") ?? await StartContainerAsync();
+        RpcUrl = Environment.GetEnvironmentVariable("X402_ANVIL_RPC_URL") is { Length: > 0 } external
+            ? external
+            : await StartContainerAsync();
         node = new Web3(RpcUrl);
         facilitator = new Web3(new Account(DevAccount0Key, ChainId), RpcUrl);
+
+        var chainId = (await node.Eth.ChainId.SendRequestAsync()).Value;
+        if (chainId != ChainId)
+        {
+            throw new InvalidOperationException(
+                $"{RpcUrl} reports chain id {chainId}, not {ChainId}: start anvil with --chain-id {ChainId} on a Base Sepolia fork.");
+        }
 
         // A fork starts at the pinned block's timestamp, hours or weeks behind the wall clock the
         // server and client sign against: align the chain clock, or every authorization would be

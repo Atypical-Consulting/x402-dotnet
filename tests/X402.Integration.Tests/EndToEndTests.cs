@@ -140,7 +140,9 @@ public sealed class EndToEndTests
 
         await fixture.Agent.GetAsync("/premium", TestContext.Current.CancellationToken);
 
-        X402Codec.TryDecode<PaymentPayload>(fixture.LastPaymentSignature!, out var payload, out _).ShouldBeTrue();
-        payload!.AsExactEvm().Authorization.From.ShouldBe(fixture.PayerAddress, StringCompareShould.IgnoreCase);
+        var signedBy = X402Codec.TryDecode<PaymentPayload>(fixture.LastPaymentSignature, out var payload, out _)
+            ? payload!.AsExactEvm().Authorization.From
+            : null;
+        signedBy.ShouldBe(fixture.PayerAddress, StringCompareShould.IgnoreCase);
     }
 }

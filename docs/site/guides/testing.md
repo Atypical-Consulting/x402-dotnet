@@ -107,7 +107,7 @@ public sealed class PaidEndpointTests
 - mempool races between two settlements of competing authorizations;
 - a facilitator that reports success on a transfer that later fails.
 
-The first two are covered by the [on-chain suite](#on-chain-tests-against-a-fork) below; the last two are covered by nothing in this repository.
+The first two are covered by the [on-chain suite](#on-chain-tests-against-a-fork) below, which also covers an authorization that someone else lands first. Two transactions genuinely pending at once (a mempool race) and a facilitator reporting false success are covered by nothing in this repository.
 
 It also says nothing about whether a real facilitator settles a given asset: it settles anything well-formed. That question is answered only by [probing the real facilitator](facilitators.md#probe-before-you-rely-on-one).
 
