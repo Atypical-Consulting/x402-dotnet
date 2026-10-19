@@ -218,10 +218,11 @@ public sealed class FakeFacilitator : IAsyncDisposable
             }, X402Json.Options);
         }
 
+        var payer = PayerOf(request);
         return Results.Json(new SettleResponse
         {
             Success = true,
-            Payer = RewriteSettlePayer is { } rewrite ? rewrite(PayerOf(request)) : PayerOf(request),
+            Payer = RewriteSettlePayer is { } rewrite ? rewrite(payer) : payer,
             // Deterministic hash derived from the nonce: reproducible, hence assertable.
             Transaction = "0x" + Convert.ToHexString(
                 System.Security.Cryptography.SHA256.HashData(

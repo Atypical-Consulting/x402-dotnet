@@ -317,13 +317,7 @@ public sealed class PaymentProcessorTests : IAsyncLifetime
     public async Task A_client_gone_before_settlement_is_not_charged()
     {
         var payload = await server.SignFor("/slow", KnownAssets.EurcBaseSepolia);
-        using (var abandon = new CancellationTokenSource(TimeSpan.FromMilliseconds(300)))
-        {
-            using var request = new HttpRequestMessage(HttpMethod.Get, "/slow");
-            request.Headers.TryAddWithoutValidation(X402Headers.PaymentSignature, X402Codec.Encode(payload));
-            await Should.ThrowAsync<OperationCanceledException>(
-                () => server.Client.SendAsync(request, abandon.Token));
-        }
+        await LeaveSlowRequestAsync(payload).ShouldThrowAsync<OperationCanceledException>();
 
         // BufferedRequestCount moves once the whole pipeline, FinishAsync included, has returned.
         for (var i = 0; i < 100 && server.BufferedRequestCount == 0; i++)
@@ -655,7 +649,8 @@ public sealed class PaymentProcessorTests : IAsyncLifetime
 
         await server.PayAsync("/premium", KnownAssets.EurcBaseSepolia);
 
-        server.Events.Single(e => e.Status == PaymentEventStatus.Settled).Payer.ShouldNotBeNull();
+        server.Events.Single(e => e.Status == PaymentEventStatus.Settled).Payer
+            .ShouldBe(server.Events.Single(e => e.Status == PaymentEventStatus.Verified).Payer);
     }
 
     [Fact]
@@ -731,6 +726,11 @@ public sealed class PaymentProcessorTests : IAsyncLifetime
             await Task.Delay(50, TestContext.Current.CancellationToken);
         }
 
+        if (server.BufferedRequestCount != 1)
+        {
+            throw new InvalidOperationException("the first presentation never reached /slow");
+        }
+
         // Reaching /slow again (and leaving again) rather than an immediate 409 proves the first
         // presentation released its ledger slot.
         await LeaveSlowRequestAsync(payload).ShouldThrowAsync<OperationCanceledException>();
@@ -792,6 +792,32 @@ public sealed class PaymentProcessorTests : IAsyncLifetime
             "/premium", payload with { Accepted = payload.Accepted with { Network = "eip155:8453" } });
 
         server.Facilitator.VerifyCallCount.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task A_poisoned_settlement_does_not_release_a_slot_a_concurrent_retry_took()
+    {
+        // Settlement at the cap cannot reach the facilitator: SettleAsync abandons the slot, and a
+        // concurrent retry of the same authorization takes it before this request finishes. The
+        // poisoned branch must stop there, not fall through and abandon the retry's lease too.
+        await using var capped = await PaidServerFixture.StartAsync(
+            configure: options => options.MaxBufferedResponseBytes = 1024);
+        capped.Facilitator.FailNextSettleCalls(2, FakeFacilitatorScenario.NetworkFailure);
+        var payload = await capped.SignFor("/large-swallowing", KnownAssets.EurcBaseSepolia);
+        var identity = new PaymentIdentity(
+            payload.Accepted.Network, payload.Accepted.Asset, payload.AsExactEvm().Authorization.Nonce);
+        capped.OnEvent = async e =>
+        {
+            if (e.Status == PaymentEventStatus.SettlementFailed)
+            {
+                await capped.Ledger.AcquireAsync(identity, CancellationToken.None);
+            }
+        };
+
+        await capped.SendAsync("/large-swallowing", payload);
+
+        (await capped.Ledger.AcquireAsync(identity, TestContext.Current.CancellationToken))
+            .State.ShouldBe(SettlementSlotState.InFlight);
     }
 
     private async Task LeaveSlowRequestAsync(PaymentPayload payload)

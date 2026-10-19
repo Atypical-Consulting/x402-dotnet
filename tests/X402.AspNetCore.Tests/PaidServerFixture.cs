@@ -88,6 +88,15 @@ public sealed class PaidServerFixture : IAsyncDisposable
     /// <summary>Every payment event recorded so far.</summary>
     public IReadOnlyList<PaymentEvent> Events => sink.Events;
 
+    /// <summary>
+    /// Runs inside the engine's own event recording, after each event is stored — lets a test act
+    /// at that exact point in the flow (e.g. take a ledger slot as a concurrent retry would).
+    /// </summary>
+    public Func<PaymentEvent, ValueTask>? OnEvent
+    {
+        set => sink.OnEvent = value;
+    }
+
     /// <summary>Error-level log messages captured so far, formatted category-first.</summary>
     public IReadOnlyList<string> LoggedErrors => logs.Errors;
 
@@ -662,6 +671,8 @@ public sealed class PaidServerFixture : IAsyncDisposable
             }
         }
 
+        public Func<PaymentEvent, ValueTask>? OnEvent { get; set; }
+
         public ValueTask RecordAsync(PaymentEvent paymentEvent, CancellationToken cancellationToken = default)
         {
             if (throwOnRecord)
@@ -674,7 +685,7 @@ public sealed class PaidServerFixture : IAsyncDisposable
                 events.Add(paymentEvent);
             }
 
-            return ValueTask.CompletedTask;
+            return OnEvent?.Invoke(paymentEvent) ?? ValueTask.CompletedTask;
         }
     }
 

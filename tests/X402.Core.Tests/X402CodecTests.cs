@@ -150,9 +150,17 @@ public sealed class X402CodecTests
     {
         var header = Convert.ToBase64String("null"u8.ToArray());
 
-        var ok = X402Codec.TryDecode<PaymentRequired>(header, out _, out var error);
+        X402Codec.TryDecode<PaymentRequired>(header, out _, out _).ShouldBeFalse();
+    }
 
-        (ok, error).ShouldBe((false, "the header decoded to a null PaymentRequired"));
+    [Fact]
+    public void TryDecode_says_a_json_null_decoded_to_null()
+    {
+        var header = Convert.ToBase64String("null"u8.ToArray());
+
+        X402Codec.TryDecode<PaymentRequired>(header, out _, out var error);
+
+        error.ShouldBe("the header decoded to a null PaymentRequired");
     }
 
     [Fact]
@@ -170,8 +178,9 @@ public sealed class X402CodecTests
     [Fact]
     public void TryDecode_clears_the_pooled_buffer_before_returning_it()
     {
-        var header = X402Codec.Encode(System.Text.Json.JsonSerializer.Deserialize<PaymentRequired>(
-            SpecVectorSource.OfKind("PaymentRequired").First().Json.ToJsonString(), Json.X402Json.Options)!);
+        // ~700 KB decoded: a pool bucket (1 MB) nothing else in the suite rents, so a dirty array
+        // found there can only be the one TryDecode just returned.
+        var header = Convert.ToBase64String(Enumerable.Repeat((byte)'x', 700_000).ToArray());
         var size = ((header.Length * 3) / 4) + 4;
         // Empty this thread's cached slot for that bucket, so the buffer TryDecode returns is the
         // one the next Rent hands back.

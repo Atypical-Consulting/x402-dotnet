@@ -324,7 +324,7 @@ internal sealed class X402PaymentProcessor(
             // the flag directly rather than trust that every handler propagates it: settlement was
             // attempted and failed, so falling through to SettleAsync below would settle — and
             // charge — a second time for the same authorization.
-            // Stryker disable once Statement : CheckCapacityAsync already discarded the buffer when it poisoned it
+            // Stryker disable once Statement : redundant today, BufferingResponseBodyFeature.CheckCapacityAsync discards the buffer as it poisons it
             buffering.Discard();
             // Not Headers.Clear(): SettleAsync is the buffer's own overflow hook (OpenBuffering
             // wires it as onOverflowAsync), so reaching this branch means it already ran at the cap
@@ -338,8 +338,6 @@ internal sealed class X402PaymentProcessor(
             // TestServer) aborts the response trying to satisfy it.
             context.Response.ContentLength = null;
             await new PaymentRequiredResult(attempt.SettlementFailedDemand).ExecuteAsync(context);
-            // Stryker disable once Statement : falling through only reaches AbandonAsync, a no-op on a slot settlement
-            // already completed or abandoned, and a flush of the buffer poisoning already discarded
             return;
         }
 
@@ -487,7 +485,7 @@ internal sealed class X402PaymentProcessor(
                 Timestamp = time.GetUtcNow(),
                 // The resource is the URL that was paid for, not the payee address: PayTo already
                 // has its own field below.
-                // Stryker disable once String : every caller passes the attempt's resource, which is never null here
+                // Stryker disable once String : PaymentAttempt.Accepted and AlreadySettled, the only attempts that settle, always set Demand
                 Resource = resource?.Url ?? "",
                 Amount = requirements.Amount,
                 Asset = requirements.Asset,
