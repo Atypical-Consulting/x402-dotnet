@@ -6,7 +6,6 @@
   "packages": {
     ".": {
       "release-type": "simple",
-      "release-as": "0.1.0",
       "package-name": "x402-dotnet",
       "include-component-in-tag": false,
       "changelog-path": "CHANGELOG.md",
