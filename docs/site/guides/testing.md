@@ -100,13 +100,37 @@ public sealed class PaidEndpointTests
 
 ## What it does not prove
 
-`FakeFacilitator` has no ledger. Its settlement transaction hash is derived from the nonce, and nothing touches a chain. These are all outside what any test against it, or any test in this repository, can catch:
+`FakeFacilitator` has no ledger. Its settlement transaction hash is derived from the nonce, and nothing touches a chain. No test against it can catch:
 
 - an insufficient on-chain balance (the `InsufficientFunds` scenario is a scripted answer, not a balance check);
 - a `transferWithAuthorization` that reverts;
 - mempool races between two settlements of competing authorizations;
 - a facilitator that reports success on a transfer that later fails.
 
+The first two are covered by the [on-chain suite](#on-chain-tests-against-a-fork) below; the last two are covered by nothing in this repository.
+
 It also says nothing about whether a real facilitator settles a given asset: it settles anything well-formed. That question is answered only by [probing the real facilitator](facilitators.md#probe-before-you-rely-on-one).
+
+## On-chain tests against a fork
+
+`tests/X402.OnChain.Tests` swaps `FakeFacilitator` for a test-only facilitator that really submits `transferWithAuthorization`, against Circle’s real `FiatToken` contracts for EURC and USDC on an [Anvil](https://getfoundry.sh/anvil/overview) fork of Base Sepolia at a pinned block. The paid API and the paying agent are the same `PaidApiFixture` the end-to-end suite uses. Each test asserts the HTTP outcome and reads the chain back independently (`balanceOf`, `authorizationState`, the settlement receipt).
+
+| Case | Agent sees | Chain shows |
+|---|---|---|
+| Settles in EURC, and in USDC | 200 | payee balance up by exactly the price, receipt status 1 |
+| Unfunded payer | 402 | `/settle` never called, payee unchanged |
+| Funds moved away between verify and settle | 402 | receipt status 0, payee unchanged, nonce still unused |
+| Same authorization landed by someone else first | 402 | payee credited exactly once, nonce used |
+| `validBefore` passed on the chain’s clock | 402 | receipt status 0 (the contract refuses it), payee unchanged |
+
+The suite is opt-in. Without `X402_ONCHAIN=1` every test reports Skipped and nothing touches Docker or the network:
+
+```bash
+X402_ONCHAIN=1 dotnet test --project tests/X402.OnChain.Tests
+```
+
+It needs Docker (an Anvil container through Testcontainers) and outbound HTTPS to a Base Sepolia RPC, `https://sepolia.base.org` by default; `X402_BASE_SEPOLIA_RPC_URL` overrides it. With Foundry installed and no Docker, start a fork yourself (`anvil --fork-url https://sepolia.base.org --fork-block-number 48300032 --chain-id 84532`) and point `X402_ANVIL_RPC_URL` at it. Opted in without either, the suite fails loudly rather than skipping. CI runs it in its own `onchain` job.
+
+It still does not prove how a real facilitator behaves (the one in these tests is ours), mempool races, reorgs, or anything about the live network.
 
 `TestServer` itself is more forgiving than a real transport. It tolerates wire-level inconsistencies, such as a stale `Content-Length`, that a real Kestrel connection rejects. Assert on headers explicitly when the wire format matters. See [Limits of what’s proven](limits.md).
