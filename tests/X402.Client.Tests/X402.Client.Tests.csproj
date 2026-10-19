@@ -25,9 +25,10 @@
     </PackageReference>
   </ItemGroup>
 
-  <!-- One set of valid-protocol-object generators, shared with the Core tests. -->
+  <!-- The protocol-object generators and header-fuzz families, shared with the Core and AspNetCore tests. -->
   <ItemGroup>
     <Compile Include="..\X402.Core.Tests\X402Arbitraries.cs" Link="X402Arbitraries.cs" />
+    <Compile Include="..\X402.AspNetCore.Tests\HeaderFuzz.cs" Link="HeaderFuzz.cs" />
   </ItemGroup>
 
   <ItemGroup>

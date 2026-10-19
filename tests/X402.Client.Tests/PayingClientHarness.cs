@@ -83,12 +83,18 @@ public sealed class PayingClientHarness : IDisposable
         .Where(r => r.Payload is not null)
         .Select(r => r.Payload!.AsExactEvm().Authorization.Nonce)];
 
-    /// <summary>Builds a harness around a hand-written response function — for scenarios with no payment involved.</summary>
-    public static PayingClientHarness Create(Func<HttpRequestMessage, HttpResponseMessage> respond)
+    /// <summary>
+    /// Builds a harness around a hand-written response function — for scenarios with no payment
+    /// involved, or, with <paramref name="configure"/> declaring limits, ones that may pay.
+    /// </summary>
+    public static PayingClientHarness Create(
+        Func<HttpRequestMessage, HttpResponseMessage> respond, Action<X402ClientOptions>? configure = null)
     {
         ArgumentNullException.ThrowIfNull(respond);
 
-        return new PayingClientHarness(new X402ClientOptions(), (request, _) => Task.FromResult(respond(request)));
+        var options = new X402ClientOptions();
+        configure?.Invoke(options);
+        return new PayingClientHarness(options, (request, _) => Task.FromResult(respond(request)));
     }
 
     /// <summary>
