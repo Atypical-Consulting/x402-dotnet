@@ -13,6 +13,57 @@
           "type": "generic",
           "path": "Directory.Build.props"
         }
+      ],
+      "changelog-sections": [
+        {
+          "type": "feat",
+          "section": "Features"
+        },
+        {
+          "type": "fix",
+          "section": "Bug Fixes"
+        },
+        {
+          "type": "perf",
+          "section": "Performance"
+        },
+        {
+          "type": "refactor",
+          "section": "Refactor"
+        },
+        {
+          "type": "revert",
+          "section": "Revert"
+        },
+        {
+          "type": "docs",
+          "section": "Documentation"
+        },
+        {
+          "type": "style",
+          "section": "Styling",
+          "hidden": true
+        },
+        {
+          "type": "test",
+          "section": "Testing",
+          "hidden": true
+        },
+        {
+          "type": "build",
+          "section": "Miscellaneous Tasks",
+          "hidden": true
+        },
+        {
+          "type": "ci",
+          "section": "Miscellaneous Tasks",
+          "hidden": true
+        },
+        {
+          "type": "chore",
+          "section": "Miscellaneous Tasks",
+          "hidden": true
+        }
       ]
     }
   }
